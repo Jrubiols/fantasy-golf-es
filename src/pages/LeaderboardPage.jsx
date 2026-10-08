@@ -13,6 +13,7 @@ import Points from '../components/ui/Points'
 import StandingsList from '../components/ui/StandingsList'
 import Tabs from '../components/ui/Tabs'
 import TeamList from '../components/ui/TeamList'
+import WeekStats from '../components/ui/WeekStats'
 
 const VIEWS = [
   { id: 'tournament', label: 'Torneo' },
@@ -77,7 +78,10 @@ export default function LeaderboardPage() {
       ) : !tournament ? (
         <div className="card"><EmptyState title="Todavía no hay torneo esta semana." /></div>
       ) : view === 'golfers' ? (
-        <Golfers players={players} tournament={tournament} />
+        <>
+          {tournament.status !== 'scheduled' && <div className="-mt-1 mb-5"><WeekStats players={players} entries={entries} tournamentId={tournament.id} scopeLabel="Fantasy Golf ES" /></div>}
+          <Golfers players={players} tournament={tournament} />
+        </>
       ) : !rows ? (
         <Skeleton className="h-44 rounded-[1.6rem]" count={3} />
       ) : rows.length === 0 ? (

@@ -8,6 +8,7 @@ import { clubColor } from '../lib/clubs'
 import { formatDateRange } from '../utils/format'
 import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
+import WeekStats from '../components/ui/WeekStats'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Icon from '../components/ui/Icon'
@@ -155,7 +156,7 @@ function LeagueDetail({ leagueId }) {
   const [copied, setCopied] = useState(false)
   const tournament = useCurrentTournament()
   const { locked } = useLocked(tournament)
-  const { byId } = usePlayers(locked ? tournament?.id : null)
+  const { players, byId } = usePlayers(locked ? tournament?.id : null)
   const entries = useEntries(tournament?.id)
   const season = useSeasonStandings(tournament?.season)
 
@@ -266,6 +267,10 @@ function LeagueDetail({ leagueId }) {
           ) : undefined}
           meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
         />
+      )}
+
+      {view === 'tournament' && locked && tournament?.status !== 'scheduled' && (
+        <WeekStats players={players} entries={(entries ?? []).filter((e) => memberIds.includes(e.uid))} tournamentId={tournament.id} scopeLabel="la liga" />
       )}
 
       <div className="mt-8 text-center">
