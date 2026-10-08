@@ -82,7 +82,7 @@ export function useWeeklyWinners(season, memberIds) {
     return subscribeFinalEntries(season, setFinals, (err) => { console.error(err); setFinals([]) })
   }, [season])
 
-  return useMemo(() => {
+  const weeks = useMemo(() => {
     if (!finals) return null
     const members = new Set(memberIds)
     const byTournament = new Map()
@@ -97,4 +97,5 @@ export function useWeeklyWinners(season, memberIds) {
       })
       .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''))
   }, [finals, memberIds])
+  return { weeks, finals }
 }

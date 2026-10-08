@@ -10,6 +10,8 @@ import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
 import { drawLeagueSummary, shareImage } from '../lib/shareImage'
+import { seasonDuels } from '../lib/duels'
+import Ordinal from '../components/ui/Ordinal'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Icon from '../components/ui/Icon'
@@ -111,8 +113,78 @@ function LeagueList() {
 const VIEWS = [
   { id: 'tournament', label: 'Torneo' },
   { id: 'season', label: 'Temporada' },
+  { id: 'duels', label: 'Duelos' },
   { id: 'winners', label: 'Ganadores' },
 ]
+
+// Duelos cara a cara: el de esta semana en grande y la tabla de la temporada
+function Duels({ duels, profiles, currentUid, currentTournamentId }) {
+  if (!duels) return <Skeleton className="h-40 rounded-[1.6rem]" count={2} />
+  const name = (uid) => profiles[uid]?.displayName ?? 'Jugador'
+  const color = (uid) => clubColor(profiles[uid]?.color, uid).bg
+  const thisWeek = duels.weeks.find((w) => w.tournamentId === currentTournamentId)
+  const mine = thisWeek?.duels.find((d) => d.a === currentUid || d.b === currentUid)
+  const me = mine && (mine.a === currentUid ? { uid: mine.a, pts: mine.aPoints } : { uid: mine.b, pts: mine.bPoints })
+  const rival = mine && (mine.a === currentUid ? { uid: mine.b, pts: mine.bPoints } : { uid: mine.a, pts: mine.aPoints })
+
+  return (
+    <div className="flex flex-col gap-4">
+      {mine && (
+        <section className="relative flex h-44 animate-fade-up overflow-hidden rounded-[1.6rem] text-white">
+          {[me, rival].map((side, i) => (
+            <div key={i} className={`relative flex flex-1 flex-col justify-between p-4 ${i ? 'items-end text-right' : ''}`} style={{ background: side.uid ? color(side.uid) : '#2a2d2a' }}>
+              <div className="halftone absolute inset-0" />
+              <span className="relative text-[0.68rem] font-semibold tracking-[0.14em] text-white/80 uppercase">{i ? 'Rival' : 'Tú'}</span>
+              <div className="relative">
+                <p className="score text-[3rem]">{side.uid ? side.pts : '–'}</p>
+                <p className="truncate text-sm font-semibold">{side.uid ? name(side.uid) : 'Descansas'}</p>
+              </div>
+            </div>
+          ))}
+          <span className="absolute top-1/2 left-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white font-display text-xl font-black text-pine shadow-lg">VS</span>
+          {rival.uid && (
+            <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/35 px-3 py-1 text-[0.7rem] font-semibold whitespace-nowrap backdrop-blur">
+              {mine.winner === currentUid ? (mine.final ? 'Ganaste' : 'Vas ganando') : mine.winner === null ? 'Empate' : mine.final ? 'Perdiste' : 'Vas perdiendo'}
+            </span>
+          )}
+        </section>
+      )}
+
+      <section className="card px-4 pt-3 pb-2">
+        <div className="grid grid-cols-[2rem_minmax(0,1fr)_repeat(4,1.8rem)_2.4rem] items-center pb-1.5 text-center label">
+          <span className="text-left">#</span><span className="text-left">Jugador</span><span>G</span><span>E</span><span>P</span><span>PJ</span><span className="text-right">Pts</span>
+        </div>
+        {duels.table.map((row, i) => (
+          <div key={row.uid} className={`grid min-h-[3.4rem] grid-cols-[2rem_minmax(0,1fr)_repeat(4,1.8rem)_2.4rem] items-center border-t border-line text-center text-sm ${row.uid === currentUid ? 'font-semibold' : ''}`}>
+            <span className="score text-left text-xl text-pine"><Ordinal value={i + 1} /></span>
+            <span className="flex min-w-0 items-center gap-2 text-left">
+              <Avatar name={name(row.uid)} color={profiles[row.uid]?.color} uid={row.uid} size="sm" />
+              <span className="truncate">{name(row.uid)}</span>
+            </span>
+            <span>{row.won}</span><span>{row.drawn}</span><span>{row.lost}</span><span className="text-muted">{row.played}</span>
+            <span className="score text-right text-xl text-pine">{row.points}</span>
+          </div>
+        ))}
+      </section>
+
+      {duels.weeks.filter((w) => w.duels.some((d) => d.final)).reverse().map((w) => (
+        <section key={w.tournamentId} className="card px-4 py-3">
+          <p className="mb-1 font-display text-[1.15rem] font-extrabold text-pine uppercase">{w.tournamentName}</p>
+          {w.duels.filter((d) => d.b).map((d) => (
+            <div key={`${d.a}-${d.b}`} className="row py-2 text-sm">
+              <span className={`min-w-0 flex-1 truncate ${d.winner === d.a ? 'font-semibold text-pine' : 'text-muted'}`}>{name(d.a)}</span>
+              <span className="score text-lg">{d.aPoints}</span>
+              <span className="text-faint">–</span>
+              <span className="score text-lg">{d.bPoints}</span>
+              <span className={`min-w-0 flex-1 truncate text-right ${d.winner === d.b ? 'font-semibold text-pine' : 'text-muted'}`}>{name(d.b)}</span>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  )
+}
+
 
 // Quién ganó cada semana dentro de la liga
 function Winners({ weeks, profiles, currentUid }) {
@@ -183,7 +255,21 @@ function LeagueDetail({ leagueId }) {
     return [...byUid.values()]
   }, [season, entries])
 
-  const weeks = useWeeklyWinners(tournament?.season, memberIds)
+  const { weeks, finals } = useWeeklyWinners(tournament?.season, memberIds)
+  // Duelos: torneos terminados de la temporada más el que está en juego
+  const duels = useMemo(() => {
+    if (!finals || !entries) return null
+    const byTournament = new Map()
+    for (const e of [...finals, ...entries.filter((e) => !e.final)]) {
+      const t = byTournament.get(e.tournamentId) ?? { tournamentId: e.tournamentId, tournamentName: e.tournamentName, startDate: e.startDate, entries: [] }
+      t.entries.push(e)
+      byTournament.set(e.tournamentId, t)
+    }
+    const list = [...byTournament.values()]
+      .filter((t) => t.entries.some((e) => memberIds.includes(e.uid)))
+      .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
+    return seasonDuels(list, memberIds)
+  }, [finals, entries, memberIds])
   const tournamentRows = useGroupStandings(memberIds, entries, profiles)
   const seasonRows = useGroupStandings(memberIds, liveSeason, profiles)
 
@@ -264,10 +350,13 @@ function LeagueDetail({ leagueId }) {
         {view === 'tournament'
           ? !tournament ? '' : locked ? `${tournament.name} · pulsa en un participante para ver su equipo` : `${tournament.name} · los equipos se descubren cuando empieza el torneo`
           : view === 'season' ? `Temporada ${tournament?.season ?? ''} · suma de todos los torneos, incluido el que está en juego`
+          : view === 'duels' ? 'Cada semana te toca un rival de la liga · victoria 3, empate 1'
           : `Temporada ${tournament?.season ?? ''} · el mejor de la liga en cada torneo`}
       </p>
 
-      {view === 'winners' ? (
+      {view === 'duels' ? (
+        <Duels duels={duels} profiles={profiles} currentUid={user.uid} currentTournamentId={tournament?.id} />
+      ) : view === 'winners' ? (
         <Winners weeks={weeks} profiles={profiles} currentUid={user.uid} />
       ) : !tournament ? (
         <div className="card"><EmptyState title="Todavía no hay torneo esta semana." /></div>

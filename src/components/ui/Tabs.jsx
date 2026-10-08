@@ -8,7 +8,7 @@ export default function Tabs({ tabs, value, onChange, className = '' }) {
           role="tab"
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
-          className={`flex-1 rounded-full font-display text-[1.2rem] font-extrabold uppercase tracking-wide transition-colors ${value === t.id ? 'bg-pine text-white' : 'text-navy hover:text-pine'}`}
+          className={`flex-1 rounded-full font-display font-extrabold uppercase tracking-wide transition-colors ${tabs.length > 3 ? 'text-[1.02rem]' : 'text-[1.2rem]'} ${value === t.id ? 'bg-pine text-white' : 'text-navy hover:text-pine'}`}
         >
           {t.label}
         </button>
