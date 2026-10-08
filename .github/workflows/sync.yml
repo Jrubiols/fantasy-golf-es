@@ -5,7 +5,8 @@ name: Sincronizar ESPN
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # Minutos desplazados: GitHub retrasa o salta las tareas en punto (:00, :15...) cuando va cargado
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 # Si una ejecución tarda, la siguiente espera en vez de pisarla
