@@ -1,125 +1,84 @@
-import { useState, useEffect } from 'react'
-import { fetchTournamentScoreboard, parseLeaderboard, parseActiveTournament, TOURS } from '../../services/espnApi'
-import { setActiveTournament, cachePlayers, getActiveTournament } from '../../services/firestoreService'
-import { playerValue } from '../../utils/scoring'
+import { useMemo } from 'react'
+import { useCurrentTournament, usePlayers } from '../../hooks/useTournament'
+import { useEntries } from '../../hooks/useLeagueData'
+import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader'
+import Skeleton from '../../components/ui/Skeleton'
+import TournamentStatus from '../../components/ui/TournamentStatus'
 
-function StatusMessage({ status }) {
-  if (!status) return null
-  const isError = status.type === 'error'
+// Si el motor lleva más de 40 minutos sin escribir, algo va mal (se ejecuta cada 15)
+const STALE_AFTER_MS = 40 * 60_000
+
+function Row({ label, children }) {
   return (
-    <div role="status" className={`mt-4 rounded-lg border px-4 py-3 text-sm ${isError ? 'border-danger/30 bg-danger/10 text-danger' : 'border-pine-400/30 bg-pine-400/10 text-pine-400'}`}>
-      {status.text}
+    <div className="flex justify-between gap-4 border-b border-white/6 py-2 text-sm last:border-0">
+      <span className="text-muted">{label}</span>
+      <span className="text-right">{children}</span>
     </div>
   )
 }
 
 export default function AdminPage() {
-  const [tour, setTour] = useState(TOURS.PGA)
-  const [preview, setPreview] = useState(null)
-  const [players, setPlayers] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [activeTournament, setActiveTournamentState] = useState(null)
-  const [status, setStatus] = useState(null)
+  const tournament = useCurrentTournament()
+  const { players } = usePlayers(tournament?.id)
+  const entries = useEntries(tournament?.id)
 
-  useEffect(() => {
-    getActiveTournament().then(setActiveTournamentState)
-  }, [])
+  const stats = useMemo(() => {
+    if (!players) return null
+    const count = (status) => players.filter((p) => p.status === status).length
+    return { total: players.length, unpriced: players.filter((p) => p.price == null).length, noOwgr: players.filter((p) => !p.owgr).length, cut: count('cut'), wd: count('wd') + count('dq') }
+  }, [players])
 
-  async function handleFetchPreview() {
-    setLoading(true)
-    setStatus(null)
-    try {
-      const data = await fetchTournamentScoreboard(tour)
-      const parsed = parseLeaderboard(data)
-      setPreview(parseActiveTournament(data))
-      setPlayers(parsed)
-      setStatus({ type: 'ok', text: `✓ ${parsed.length} jugadores cargados desde ESPN` })
-    } catch (err) {
-      setStatus({ type: 'error', text: `Error: ${err.message}` })
-    }
-    setLoading(false)
-  }
-
-  async function handleActivate() {
-    if (!preview) return
-    setLoading(true)
-    try {
-      await setActiveTournament({ ...preview, tour })
-      await cachePlayers(players.map((p) => ({ id: p.id, name: p.name, shortName: p.shortName, country: p.country, photoURL: p.photoURL, owgr: p.owgr || null, value: playerValue(p.owgr) })))
-      setActiveTournamentState({ ...preview, tour })
-      setStatus({ type: 'ok', text: '✓ Torneo activado y jugadores guardados' })
-    } catch (err) {
-      setStatus({ type: 'error', text: `Error: ${err.message}` })
-    }
-    setLoading(false)
-  }
+  const updatedAt = tournament?.updatedAt?.toMillis?.()
+  const stale = updatedAt != null && Date.now() - updatedAt > STALE_AFTER_MS
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
-      <PageHeader title="Panel de Admin" subtitle="Solo visible para administradores" />
+      <PageHeader title="Panel de admin" subtitle="Estado del motor que sincroniza ESPN" />
 
-      {activeTournament && (
-        <section className="card mb-5 border-pine-400/30 px-5 py-4">
-          <p className="mb-1 text-xs font-semibold tracking-wide text-pine-400">TORNEO ACTIVO ACTUAL</p>
-          <p className="font-semibold">{activeTournament.name}</p>
-          <p className="text-sm text-muted">Tour: {activeTournament.tour?.toUpperCase()} · ID: {activeTournament.id}</p>
+      {tournament === undefined ? (
+        <Skeleton className="h-40" />
+      ) : !tournament ? (
+        <section className="card border-danger/30 p-5 text-sm">
+          <p className="font-semibold text-danger">El motor todavía no ha guardado ningún torneo.</p>
+          <p className="mt-2 text-muted">Comprueba en GitHub → Actions → «Sincronizar ESPN» que el flujo está activo y que el secreto FIREBASE_SERVICE_ACCOUNT existe.</p>
         </section>
+      ) : (
+        <>
+          <section className={`card mb-5 p-5 ${stale ? 'border-danger/40' : ''}`}>
+            <div className="mb-3 flex items-center gap-2">
+              <TournamentStatus status={tournament.status} />
+              <h2 className="font-semibold">{tournament.name}</h2>
+            </div>
+            <Row label="Última sincronización">
+              <span className={stale ? 'font-semibold text-danger' : ''}>{updatedAt ? formatDateTime(updatedAt) : '–'}{stale ? ' · ¡retrasada!' : ''}</span>
+            </Row>
+            <Row label="Estado de ESPN">{tournament.statusDetail || '–'}</Row>
+            <Row label="Cierre de equipos">{tournament.firstTeeTime ? formatDateTime(tournament.firstTeeTime.toMillis()) : '–'}</Row>
+            <Row label="Corte">{tournament.cutRound ? `tras la ronda ${tournament.cutRound} (${tournament.cutCount} jugadores)` : 'sin corte'}</Row>
+            <Row label="ID de ESPN"><span className="font-mono">{tournament.id}</span></Row>
+          </section>
+
+          <section className="card mb-5 p-5">
+            <h2 className="mb-2 font-semibold">Datos</h2>
+            {stats ? (
+              <>
+                <Row label="Jugadores inscritos">{stats.total}</Row>
+                <Row label="Sin precio">{stats.unpriced}</Row>
+                <Row label="Fuera del top 1000 OWGR (precio mínimo)">{stats.noOwgr}</Row>
+                <Row label="Corte / retirados">{stats.cut} / {stats.wd}</Row>
+                <Row label="Equipos publicados">{entries?.length ?? '–'}</Row>
+              </>
+            ) : <Skeleton count={3} />}
+          </section>
+        </>
       )}
 
-      <section className="card mb-5 p-6">
-        <h2 className="mb-4 font-semibold">1. Seleccionar tour</h2>
-        <div className="mb-4 flex flex-wrap gap-2">
-          {Object.entries(TOURS).map(([key, val]) => (
-            <button
-              key={val}
-              onClick={() => setTour(val)}
-              aria-pressed={tour === val}
-              className={`rounded-lg border px-4 py-2 text-sm transition-colors ${tour === val ? 'border-gold-500 bg-gold-500/12 font-semibold text-gold-500' : 'border-white/15 text-muted hover:text-cream'}`}
-            >
-              {key}
-            </button>
-          ))}
-        </div>
-        <button className="btn-primary" onClick={handleFetchPreview} disabled={loading}>
-          {loading ? 'Cargando ESPN...' : 'Obtener torneo actual de ESPN →'}
-        </button>
+      <section className="card p-5 text-sm text-muted">
+        <h2 className="mb-2 font-semibold text-cream">¿Cómo forzar una actualización?</h2>
+        <p>En GitHub, abre el repositorio → pestaña <strong>Actions</strong> → <strong>Sincronizar ESPN</strong> → <strong>Run workflow</strong>. Tarda un minuto.</p>
+        <p className="mt-2">Para hacer admin a otra persona: en la consola de Firebase → Firestore → <code>users</code> → su documento → pon <code>isAdmin</code> a <code>true</code>.</p>
       </section>
-
-      {preview && (
-        <section className="card mb-5 p-6">
-          <h2 className="mb-4 font-semibold">2. Revisar y activar</h2>
-          <div className="mb-4 rounded-lg bg-white/4 p-4 text-sm">
-            <p className="mb-1 text-base font-semibold">{preview.name}</p>
-            <p className="text-muted">{preview.venue}{preview.city ? ` · ${preview.city}` : ''}</p>
-            <p className="text-muted">Estado: {preview.statusDisplay || preview.status} · ID: {preview.id}</p>
-            <p className="mt-2 text-gold-500">{players.length} jugadores disponibles</p>
-          </div>
-          <button className="btn-primary" onClick={handleActivate} disabled={loading}>
-            {loading ? 'Activando...' : '⚡ Activar este torneo y guardar jugadores'}
-          </button>
-        </section>
-      )}
-
-      {players.length > 0 && (
-        <section className="card p-5">
-          <h2 className="mb-4 font-semibold">Jugadores cargados ({players.length})</h2>
-          <ol className="flex max-h-100 flex-col gap-1.5 overflow-y-auto">
-            {players.slice(0, 60).map((p, i) => (
-              <li key={p.id ?? i} className="flex justify-between rounded-md bg-white/3 px-3 py-2 text-sm">
-                <div className="flex items-center gap-2.5">
-                  <span className="min-w-6 font-mono text-muted">{i + 1}</span>
-                  <span>{p.name}</span>
-                  <span className="text-muted">{p.country}</span>
-                </div>
-                <span className="font-mono text-gold-500">{playerValue(p.owgr)}M</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      <StatusMessage status={status} />
     </div>
   )
 }

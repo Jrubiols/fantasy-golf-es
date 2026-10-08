@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
-import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import { auth, db, googleProvider } from '../services/firebase'
 import { AuthContext } from './auth-context'
 
@@ -29,22 +29,25 @@ export function AuthProvider({ children }) {
       setUser(firebaseUser)
       const ref = doc(db, 'users', firebaseUser.uid)
 
+      // El perfil es público para el resto de jugadores: solo nombre y foto (nunca el email)
+      const displayName = firebaseUser.displayName || 'Jugador'
+      const photoURL = firebaseUser.photoURL ?? null
+
       unsubProfile = onSnapshot(
         ref,
         async (snap) => {
-          if (snap.exists()) {
-            setProfile(snap.data())
-          } else {
-            const newProfile = {
-              uid: firebaseUser.uid,
-              displayName: firebaseUser.displayName,
-              email: firebaseUser.email,
-              photoURL: firebaseUser.photoURL,
-              isAdmin: false,
-              createdAt: serverTimestamp(),
+          try {
+            if (!snap.exists()) {
+              await setDoc(ref, { displayName, photoURL, isAdmin: false, createdAt: serverTimestamp() })
+              return
             }
-            await setDoc(ref, newProfile)
-            setProfile(newProfile)
+            const data = snap.data()
+            if (data.displayName !== displayName || data.photoURL !== photoURL) {
+              await updateDoc(ref, { displayName, photoURL })
+            }
+            setProfile(data)
+          } catch (err) {
+            console.error('Error guardando el perfil:', err)
           }
           setLoading(false)
         },

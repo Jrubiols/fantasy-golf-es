@@ -2,7 +2,9 @@
 import { readFileSync } from 'node:fs'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { arrayRemove, arrayUnion, doc, getDoc, serverTimestamp, setDoc, Timestamp, updateDoc, writeBatch } from 'firebase/firestore'
+import {
+  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
+} from 'firebase/firestore'
 
 const TID = 't1'
 const PRICES = { p1: 25, p2: 20, p3: 15, p4: 12, p5: 10, p6: 8, p7: 30 }
@@ -151,6 +153,24 @@ describe('ligas', () => {
     await createLeague('ana')
     await join('bea')
     await assertFails(updateDoc(doc(as('ana'), 'leagues', 'L1'), { memberIds: arrayRemove('bea') }))
+  })
+  test('cada uno lista solo sus ligas', async () => {
+    await createLeague('ana')
+    await assertSucceeds(getDocs(query(collection(as('ana'), 'leagues'), where('memberIds', 'array-contains', 'ana'))))
+    await assertFails(getDocs(collection(as('bea'), 'leagues')))
+  })
+  test('solo el creador borra la liga y su código', async () => {
+    await createLeague('ana')
+    await join('bea')
+    const remove = (uid) => {
+      const db = as(uid)
+      const batch = writeBatch(db)
+      batch.delete(doc(db, 'leagueCodes', 'ABC123'))
+      batch.delete(doc(db, 'leagues', 'L1'))
+      return batch.commit()
+    }
+    await assertFails(remove('bea'))
+    await assertSucceeds(remove('ana'))
   })
   test('solo el creador renombra', async () => {
     await createLeague('ana')

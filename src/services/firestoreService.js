@@ -1,73 +1,122 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, orderBy, serverTimestamp, onSnapshot } from 'firebase/firestore'
+// Acceso a Firestore desde la web. Lo que escribe el motor (torneos, jugadores, puntos)
+// aquí solo se lee; las reglas de firestore.rules impiden escribirlo desde el navegador.
+import {
+  arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
+} from 'firebase/firestore'
+import { customAlphabet } from 'nanoid'
 import { db } from './firebase'
-import { nanoid } from 'nanoid'
 
-export async function createLeague(uid, leagueName) {
-  const code = nanoid(6).toUpperCase()
-  const leagueRef = doc(collection(db, 'leagues'))
-  await setDoc(leagueRef, { id: leagueRef.id, name: leagueName, code, adminUid: uid, members: [uid], createdAt: serverTimestamp() })
-  await updateDoc(doc(db, 'users', uid), { leagueId: leagueRef.id })
-  return { id: leagueRef.id, code }
+const toData = (snap) => (snap.exists() ? { id: snap.id, ...snap.data() } : null)
+const toList = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+/** Torneo de la semana: config/current apunta a él y el motor lo mantiene al día. */
+export function subscribeCurrentTournament(callback, onError) {
+  let unsubTournament = () => {}
+  const unsubConfig = onSnapshot(doc(db, 'config', 'current'), (snap) => {
+    unsubTournament()
+    const id = snap.data()?.tournamentId
+    if (!id) { callback(null); return }
+    unsubTournament = onSnapshot(doc(db, 'tournaments', id), (t) => callback(toData(t)), onError)
+  }, onError)
+  return () => { unsubConfig(); unsubTournament() }
 }
 
-export async function joinLeague(uid, code) {
-  const q = query(collection(db, 'leagues'), where('code', '==', code.toUpperCase()))
-  const snap = await getDocs(q)
-  if (snap.empty) throw new Error('Liga no encontrada')
-  const leagueDoc = snap.docs[0]
-  const leagueData = leagueDoc.data()
-  if (leagueData.members.includes(uid)) throw new Error('Ya eres miembro de esta liga')
-  await updateDoc(leagueDoc.ref, { members: [...leagueData.members, uid] })
-  await updateDoc(doc(db, 'users', uid), { leagueId: leagueDoc.id })
-  return leagueData
+export function subscribePlayers(tournamentId, callback, onError) {
+  return onSnapshot(collection(db, 'tournaments', tournamentId, 'players'), (snap) => callback(toList(snap)), onError)
 }
 
-export async function getLeague(leagueId) {
-  const snap = await getDoc(doc(db, 'leagues', leagueId))
-  return snap.exists() ? snap.data() : null
+// --- Equipos ---
+
+const picksId = (tournamentId, uid) => `${tournamentId}_${uid}`
+
+export async function getMyPicks(tournamentId, uid) {
+  return toData(await getDoc(doc(db, 'picks', picksId(tournamentId, uid))))
 }
 
-export function subscribeToLeagueScores(leagueId, tournamentId, callback) {
-  const q = query(collection(db, 'scores'), where('leagueId', '==', leagueId), where('tournamentId', '==', tournamentId), orderBy('totalPoints', 'desc'))
-  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => d.data())))
+/** El coste se suma en el mismo orden que lo comprueban las reglas, para que cuadre al céntimo. */
+export function savePicks(tournamentId, user, playerIds, captainId, priceById) {
+  return setDoc(doc(db, 'picks', picksId(tournamentId, user.uid)), {
+    uid: user.uid,
+    tournamentId,
+    playerIds,
+    captainId,
+    cost: playerIds.reduce((sum, id) => sum + priceById[id], 0),
+    displayName: user.displayName ?? 'Jugador',
+    photoURL: user.photoURL ?? null,
+    updatedAt: serverTimestamp(),
+  })
 }
 
-export async function savePicks(uid, leagueId, tournamentId, playerIds) {
-  await setDoc(doc(db, 'picks', `${leagueId}_${uid}_${tournamentId}`), { uid, leagueId, tournamentId, playerIds, savedAt: serverTimestamp() })
+/** Equipos publicados (desde la primera salida), con puntos y puesto. */
+export function subscribeEntries(tournamentId, callback, onError) {
+  return onSnapshot(query(collection(db, 'entries'), where('tournamentId', '==', tournamentId)), (snap) => callback(toList(snap)), onError)
 }
 
-export async function getPicks(uid, leagueId, tournamentId) {
-  const snap = await getDoc(doc(db, 'picks', `${leagueId}_${uid}_${tournamentId}`))
-  return snap.exists() ? snap.data() : null
+export function subscribeMyEntries(uid, callback, onError) {
+  return onSnapshot(query(collection(db, 'entries'), where('uid', '==', uid)), (snap) => callback(toList(snap)), onError)
 }
 
-export async function getActiveTournament() {
-  const q = query(collection(db, 'tournaments'), where('active', '==', true))
-  const snap = await getDocs(q)
-  return snap.empty ? null : snap.docs[0].data()
+export function subscribeSeasonStandings(season, callback, onError) {
+  return onSnapshot(collection(db, 'seasons', String(season), 'standings'), (snap) => callback(toList(snap)), onError)
 }
 
-export async function setActiveTournament(tournamentData) {
-  const q = query(collection(db, 'tournaments'), where('active', '==', true))
-  const snap = await getDocs(q)
-  for (const d of snap.docs) await updateDoc(d.ref, { active: false })
-  await setDoc(doc(db, 'tournaments', tournamentData.id), { ...tournamentData, active: true, createdAt: serverTimestamp() })
+// --- Ligas ---
+
+// Sin caracteres que se confunden al dictar el código (0/O, 1/I)
+const newCode = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 6)
+
+export function subscribeMyLeagues(uid, callback, onError) {
+  return onSnapshot(query(collection(db, 'leagues'), where('memberIds', 'array-contains', uid)), (snap) => callback(toList(snap)), onError)
 }
 
-export function subscribeToActiveTournament(callback) {
-  const q = query(collection(db, 'tournaments'), where('active', '==', true))
-  return onSnapshot(q, (snap) => callback(snap.empty ? null : snap.docs[0].data()))
+export function subscribeLeague(leagueId, callback, onError) {
+  return onSnapshot(doc(db, 'leagues', leagueId), (snap) => callback(toData(snap)), onError)
 }
 
-export async function cachePlayers(players) {
-  await Promise.all(players.map((p) => setDoc(doc(db, 'players', p.id), p, { merge: true })))
+/** Crea la liga y su código a la vez. Si el código ya existe (muy raro), prueba con otro. */
+export async function createLeague(uid, name) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = newCode()
+    const leagueRef = doc(collection(db, 'leagues'))
+    const batch = writeBatch(db)
+    batch.set(leagueRef, { name, code, ownerUid: uid, memberIds: [uid], createdAt: serverTimestamp() })
+    batch.set(doc(db, 'leagueCodes', code), { leagueId: leagueRef.id })
+    try {
+      await batch.commit()
+      return leagueRef.id
+    } catch (err) {
+      if (err.code !== 'permission-denied' || attempt === 2) throw err
+    }
+  }
 }
 
-export async function getAllPlayers() {
-  const snap = await getDocs(collection(db, 'players'))
-  return snap.docs.map((d) => d.data())
+export async function joinLeague(uid, rawCode) {
+  const code = rawCode.trim().toUpperCase()
+  const codeSnap = await getDoc(doc(db, 'leagueCodes', code))
+  if (!codeSnap.exists()) throw new Error('No existe ninguna liga con ese código')
+  const { leagueId } = codeSnap.data()
+  try {
+    await updateDoc(doc(db, 'leagues', leagueId), { memberIds: arrayUnion(uid) })
+  } catch (err) {
+    // Las reglas rechazan unirse dos veces o pasar de 50 miembros
+    if (err.code === 'permission-denied') throw new Error('Ya estás en esta liga o está completa')
+    throw err
+  }
+  return leagueId
 }
 
-export function subscribeToPlayers(callback) {
-  return onSnapshot(collection(db, 'players'), (snap) => callback(snap.docs.map((d) => d.data())))
+export function leaveLeague(uid, leagueId) {
+  return updateDoc(doc(db, 'leagues', leagueId), { memberIds: arrayRemove(uid) })
+}
+
+export function renameLeague(leagueId, name) {
+  return updateDoc(doc(db, 'leagues', leagueId), { name })
+}
+
+/** Borra la liga y su código (solo el creador). */
+export function deleteLeague(league) {
+  const batch = writeBatch(db)
+  batch.delete(doc(db, 'leagueCodes', league.code))
+  batch.delete(doc(db, 'leagues', league.id))
+  return batch.commit()
 }

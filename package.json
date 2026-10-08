@@ -11,7 +11,10 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-fantasy-golf \"node --test tests/rules.test.mjs\"",
     "test:engine": "firebase emulators:exec --only firestore --project demo-fantasy-golf \"node --test tests/engine.test.mjs\"",
     "test": "firebase emulators:exec --only firestore --project demo-fantasy-golf \"node --test --test-concurrency=1 tests/*.test.mjs\"",
-    "sync": "node scripts/sync.mjs"
+    "sync": "node scripts/sync.mjs",
+    "dev:emu": "vite --mode emulator",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-fantasy-golf",
+    "sync:emu": "node scripts/sync.mjs --emulator"
   },
   "dependencies": {
     "firebase": "^12.0.0",

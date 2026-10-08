@@ -24,6 +24,7 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/draft" element={<DraftPage />} />
                 <Route path="/league" element={<LeaguePage />} />
+                <Route path="/league/:leagueId" element={<LeaguePage />} />
                 <Route path="/leaderboard" element={<LeaderboardPage />} />
                 <Route element={<ProtectedRoute adminOnly />}>
                   <Route path="/admin" element={<AdminPage />} />
