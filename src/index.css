@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* La variante dark: sigue al tema elegido en la app (data-theme), no solo al del sistema */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /* Paleta y tipografías: generan utilidades como bg-pine, text-ink, font-display */
 @theme {
   /* Superficies */

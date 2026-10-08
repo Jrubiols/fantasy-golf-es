@@ -22,7 +22,7 @@ const db = getFirestore(initializeApp({ projectId: 'demo-fantasy-golf' }))
 db.settings({ ignoreUndefinedProperties: true })
 
 async function clear() {
-  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config']) await db.recursiveDelete(db.collection(name))
+  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config', 'leagues']) await db.recursiveDelete(db.collection(name))
 }
 
 /** Equipo válido: el más caro que quepa en 100M, empezando por el jugador indicado */
@@ -78,7 +78,9 @@ describe('torneo en juego', () => {
     const leader = (await db.doc(`tournaments/${id}/players/5054388`).get()).data()
     assert.equal(leader.name, 'Jacob Bridgeman')
     assert.equal(leader.holes.played, 18)
-    assert.equal(leader.points, 64)
+    // 64 de hoyos y posición + racha de birdies (5-6-7) + ronda sin bogeys
+    assert.equal(leader.points, 70)
+    assert.deepEqual([leader.pointsBreakdown.bonusDetail.streaks, leader.pointsBreakdown.bonusDetail.bogeyFree], [1, 1])
   })
 
   test('una segunda pasada sin cambios no reescribe jugadores', async () => {
@@ -257,5 +259,60 @@ describe('comodines', () => {
     const week2 = (await db.doc(`entries/${liveId}_ana`).get()).data()
     assert.equal(week2.chip, null)
     assert.equal(week2.chipRejected, true)
+  })
+})
+
+describe('en directo: momentos y Vestuario', () => {
+  const id = live.events[0].id
+  const fakeMessenger = () => {
+    const sent = []
+    return { sent, async sendEachForMulticast(msg) { sent.push(msg); return { successCount: msg.tokens.length, responses: msg.tokens.map(() => ({ success: true })) } } }
+  }
+  const messages = async () => (await db.collection('leagues/L1/messages').orderBy('createdAt').get()).docs.map((d) => d.data().text)
+
+  test('cierre, momentos agrupados y cambio de líder, sin repetir', async () => {
+    await clear()
+    await db.recursiveDelete(db.collection('users'))
+    for (const uid of ['ana', 'bea']) await db.doc(`users/${uid}/tokens/tok-${uid}`).set({ createdAt: new Date() })
+    await db.doc('leagues/L1').set({ name: 'Amigos', code: 'ABC123', ownerUid: 'ana', memberIds: ['ana', 'bea'] })
+
+    await sync(db, { sources: sources(live), now: new Date('2026-10-01T00:00:00Z'), log: quiet })
+    const players = (await db.collection(`tournaments/${id}/players`).orderBy('price').get()).docs.map((d) => d.data())
+    const cheap = players.filter((p) => !['5054388', '4837368'].includes(p.id)).slice(0, 8).map((p) => p.id)
+    await db.doc(`picks/${id}_ana`).set({ uid: 'ana', tournamentId: id, playerIds: ['5054388', '4837368', ...cheap.slice(0, 4)], captainId: '5054388', cost: 60, displayName: 'Ana García', chip: 'triple' })
+    await db.doc(`picks/${id}_bea`).set({ uid: 'bea', tournamentId: id, playerIds: cheap.slice(2, 8), captainId: cheap[2], cost: 40, displayName: 'Bea López' })
+
+    // Primera pasada con los equipos cerrados: solo el mensaje de cierre
+    const m1 = fakeMessenger()
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:00:00Z'), log: quiet, messenger: m1 })
+    let texts = await messages()
+    assert.equal(texts.length, 1)
+    assert.match(texts[0], /Equipos cerrados.*2 en juego.*Ana activa Triple capitán/)
+
+    // Simulamos que en la pasada anterior Coody aún no tenía su eagle ni Bridgeman su racha,
+    // y que la líder era Bea
+    const coody = db.doc(`tournaments/${id}/players/4837368`)
+    const holes = (await coody.get()).data().holes
+    await coody.update({ holes: { ...holes, eagles: holes.eagles - 1 } })
+    await db.doc(`tournaments/${id}/players/5054388`).update({ 'pointsBreakdown.bonusDetail.streaks': 0 })
+    await db.doc('leagues/L1').update({ 'live.leaders': ['bea'] })
+
+    const m2 = fakeMessenger()
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:15:00Z'), log: quiet, messenger: m2 })
+    const toAna = m2.sent.filter((m) => m.tokens.includes('tok-ana')).map((m) => m.notification.title)
+    assert.ok(toAna.includes('Tu equipo está on fire: 2 momentos'))
+    assert.ok(toAna.includes('¡Lideras Amigos!'))
+    assert.ok(m2.sent.some((m) => m.tokens.includes('tok-bea') && m.notification.title === 'Ana lidera Amigos'))
+    texts = await messages()
+    assert.ok(texts.some((t) => /🦅 Eagle de P\. Coody · lo lleva Ana/.test(t)))
+    assert.ok(texts.some((t) => /👑 Ana pasa a liderar/.test(t)))
+    assert.ok(!texts.some((t) => /Racha/.test(t))) // las rachas solo van por aviso, no al Vestuario
+
+    // Sin cambios: nada nuevo
+    const before = texts.length
+    const m3 = fakeMessenger()
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:30:00Z'), log: quiet, messenger: m3 })
+    assert.equal((await messages()).length, before)
+    assert.equal(m3.sent.length, 0)
   })
 })

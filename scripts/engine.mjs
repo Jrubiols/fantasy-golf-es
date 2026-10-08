@@ -4,8 +4,9 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { fetchLeaderboard, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
-import { applySubstitutions, playerPoints, teamPoints } from '../src/lib/scoring.js'
+import { applySubstitutions, CHIPS, playerPoints, teamPoints } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
+import { detectMoments, isBigMoment, leaders, momentsMessage, momentText } from './moments.mjs'
 
 export const defaultSources = {
   leaderboard: (eventId) => fetchLeaderboard(eventId),
@@ -196,6 +197,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     }))
     summary.entries = await commitAll(db, entryWrites)
 
+    // 5b. En directo: momentos de los golfistas, cambios de líder y mensajes del Vestuario
+    summary.notified += await liveEvents(db, { tournament, teams, fieldPlayers, storedPlayers, messenger, now })
+
     // 6. Al terminar: clasificación de la temporada, sumando todos los torneos ya cerrados
     if (tournament.status === 'final') {
       summary.standings = await updateSeasonStandings(db, tournament.season, now)
@@ -220,6 +224,83 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
 
   log(`${tournament.name} (${tournament.status}): ${summary.players} jugadores actualizados, ${summary.priced} con precio nuevo, ${summary.entries} equipos, ${summary.standings} en la temporada, ${summary.notified} avisos`)
   return summary
+}
+
+const firstName = (name) => String(name ?? 'Alguien').split(' ')[0]
+const joinNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names.at(-1)}` : names[0])
+const formatPoints = (n) => String(n).replace('.', ',')
+
+/**
+ * Lo que ha pasado desde la pasada anterior, contado a cada uno:
+ * - avisos agrupados a quien lleva al golfista (eagle, hoyo en uno, racha, ronda limpia)
+ * - en el Vestuario de cada liga: cierre de equipos, momentos grandes, cambios de líder y ganador
+ * El estado de cada liga queda en leagues/{id}.live para no repetir mensajes. Devuelve los avisos enviados.
+ */
+async function liveEvents(db, { tournament, teams, fieldPlayers, storedPlayers, messenger, now }) {
+  let delivered = 0
+  const moments = tournament.status === 'scheduled' ? [] : detectMoments(storedPlayers, fieldPlayers)
+  const owners = new Map()
+  for (const t of teams) for (const id of t.playerIds) owners.set(id, [...(owners.get(id) ?? []), t.uid])
+
+  // Avisos al móvil: uno por usuario y pasada, con todos sus momentos
+  const byUser = new Map()
+  for (const m of moments) for (const uid of owners.get(m.playerId) ?? []) byUser.set(uid, [...(byUser.get(uid) ?? []), m])
+  if (messenger && byUser.size) {
+    delivered += await notify(db, messenger, { uids: [...byUser.keys()], messages: (uid) => ({ ...momentsMessage(byUser.get(uid)), path: '/dashboard' }) })
+  }
+
+  const teamByUid = new Map(teams.map((t) => [t.uid, t]))
+  const leaguesSnap = await db.collection('leagues').get()
+  for (const leagueDoc of leaguesSnap.docs) {
+    const league = leagueDoc.data()
+    const memberTeams = league.memberIds.map((uid) => teamByUid.get(uid)).filter(Boolean)
+    if (!memberTeams.length) continue
+    const live = league.live?.tournamentId === tournament.id ? league.live : null
+    const name = (uid) => firstName(teamByUid.get(uid)?.displayName)
+    const lines = []
+
+    if (!live) {
+      const chips = memberTeams.filter((t) => t.chip).map((t) => `${firstName(t.displayName)} activa ${CHIPS[t.chip].name}`)
+      lines.push(`🔒 Equipos cerrados para el ${tournament.name}: ${memberTeams.length} en juego.${chips.length ? ` ${chips.join(' · ')}.` : ''}`)
+    }
+    for (const m of moments.filter(isBigMoment)) {
+      const who = (owners.get(m.playerId) ?? []).filter((uid) => league.memberIds.includes(uid))
+      if (who.length) lines.push(`${momentText(m)} · ${who.length === 1 ? 'lo lleva' : 'lo llevan'} ${joinNames(who.map(name))}`)
+    }
+
+    const lead = leaders(memberTeams)
+    const leadPoints = formatPoints(teamByUid.get(lead[0])?.points ?? 0)
+    const leaderChanged = live && tournament.status === 'in_progress' && memberTeams.length > 1 && (live.leaders ?? []).join() !== lead.join()
+    if (leaderChanged) {
+      lines.push(`👑 ${joinNames(lead.map(name))} ${lead.length > 1 ? 'comparten el liderato' : 'pasa a liderar'} con ${leadPoints} puntos`)
+      if (messenger) {
+        delivered += await notify(db, messenger, {
+          uids: league.memberIds,
+          messages: (uid) => ({
+            title: lead.includes(uid) ? `¡Lideras ${league.name}!` : `${joinNames(lead.map(name))} lidera ${league.name}`,
+            body: `${tournament.name}: ${leadPoints} puntos. Mira la clasificación.`,
+            path: `/league/${leagueDoc.id}`,
+          }),
+        })
+      }
+    }
+    const announceWinner = tournament.status === 'final' && !live?.finalPosted
+    if (announceWinner) lines.push(`🏆 ${joinNames(lead.map(name))} ${lead.length > 1 ? 'ganan' : 'gana'} el ${tournament.name} en la liga con ${leadPoints} puntos`)
+
+    if (lines.length) {
+      const batch = db.batch()
+      lines.forEach((text, i) => {
+        batch.set(leagueDoc.ref.collection('messages').doc(), {
+          uid: 'system', displayName: 'Fantasy Golf ES', color: null, text, kind: 'system',
+          // Un milisegundo de diferencia para que salgan en orden
+          createdAt: Timestamp.fromMillis(now.getTime() + i),
+        })
+      })
+      await batch.commit()
+    }
+    await leagueDoc.ref.set({ live: { tournamentId: tournament.id, leaders: lead, finalPosted: Boolean(announceWinner || live?.finalPosted) } }, { merge: true })
+  }
+  return delivered
 }
 
 /** Estadísticas del equipo en el torneo, para los logros: birdies, eagles, corte y acierto del capitán. */

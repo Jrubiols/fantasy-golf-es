@@ -14,6 +14,9 @@ export const CHIPS = {
 export const HOLE_POINTS = { albatross: 8, eagles: 5, birdies: 3, pars: 1, bogeys: -1, doubles: -2 }
 export const CUT_POINTS = { made: 5, missed: -10 }
 
+// Bonus de emoción, a partir de la tarjeta hoyo a hoyo
+export const BONUS_POINTS = { streak: 3, bogeyFree: 3, holeInOne: 10, allUnderPar: 5 }
+
 // Bonus por posición: [hasta el puesto, puntos]. Se aplica en directo con la posición actual.
 export const POSITION_POINTS = [
   [1, 30], [2, 25], [3, 22], [4, 19], [5, 16],
@@ -30,6 +33,10 @@ export const RULES = [
   { label: 'Doble bogey o peor', points: HOLE_POINTS.doubles },
   { label: 'Pasa el corte', points: CUT_POINTS.made },
   { label: 'No pasa el corte o se retira', points: CUT_POINTS.missed },
+  { label: 'Racha de 3 birdies seguidos (1 por ronda)', points: BONUS_POINTS.streak },
+  { label: 'Ronda sin bogeys', points: BONUS_POINTS.bogeyFree },
+  { label: 'Hoyo en uno (además del eagle)', points: BONUS_POINTS.holeInOne },
+  { label: 'Todas las rondas bajo par', points: BONUS_POINTS.allUnderPar },
 ]
 
 export function positionPoints(position) {
@@ -48,12 +55,38 @@ export function cutPoints(player, tournament) {
   return hasCut && cutDone ? CUT_POINTS.made : 0
 }
 
-/** Puntos de un jugador con su desglose: { total, holes, position, cut } */
+/**
+ * Bonus de emoción de un jugador a partir de su tarjeta (player.scorecard) y el par de cada hoyo.
+ * Devuelve { total, streaks, bogeyFree, holesInOne, allUnderPar }.
+ */
+export function bonusPoints(player, tournament) {
+  const pars = tournament.holePars ?? {}
+  const result = { total: 0, streaks: 0, bogeyFree: 0, holesInOne: 0, allUnderPar: false }
+  const rounds = player.scorecard ?? []
+  for (const { strokes } of rounds) {
+    const diffs = strokes.map((v, i) => (v == null || !pars[i + 1] ? null : v - pars[i + 1]))
+    // Racha: 3 hoyos seguidos bajo par (en el orden de la tarjeta), máximo una por ronda
+    if (diffs.some((_, i) => i >= 2 && [diffs[i - 2], diffs[i - 1], diffs[i]].every((d) => d != null && d < 0))) result.streaks++
+    // Ronda limpia: los 18 hoyos jugados y ninguno por encima del par
+    if (diffs.every((d) => d != null && d <= 0)) result.bogeyFree++
+    result.holesInOne += strokes.filter((v) => v === 1).length
+  }
+  const complete = rounds.filter((r) => r.strokes.every((v) => v != null))
+  const roundPar = Object.values(pars).reduce((a, b) => a + b, 0)
+  result.allUnderPar = tournament.status === 'final' && complete.length >= (tournament.rounds ?? 4) && roundPar > 0
+    && complete.every((r) => r.strokes.reduce((a, b) => a + b, 0) < roundPar)
+  result.total = result.streaks * BONUS_POINTS.streak + result.bogeyFree * BONUS_POINTS.bogeyFree
+    + result.holesInOne * BONUS_POINTS.holeInOne + (result.allUnderPar ? BONUS_POINTS.allUnderPar : 0)
+  return result
+}
+
+/** Puntos de un jugador con su desglose: { total, holes, position, cut, bonus, bonusDetail } */
 export function playerPoints(player, tournament) {
   const holes = Object.entries(HOLE_POINTS).reduce((sum, [key, pts]) => sum + (player.holes?.[key] ?? 0) * pts, 0)
   const position = positionPoints(player.position)
   const cut = cutPoints(player, tournament)
-  return { total: holes + position + cut, holes, position, cut }
+  const bonusDetail = bonusPoints(player, tournament)
+  return { total: holes + position + cut + bonusDetail.total, holes, position, cut, bonus: bonusDetail.total, bonusDetail }
 }
 
 /** Puntos de un equipo: suma de sus jugadores, con el capitán multiplicado (x3 con el triple capitán). */

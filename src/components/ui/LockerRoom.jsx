@@ -48,11 +48,22 @@ export default function LockerRoom({ leagueId }) {
   return (
     <section className="card mt-6 animate-fade-up p-4">
       <h2 className="headline px-1 text-[1.8rem]">Vestuario</h2>
-      <p className="mb-3 px-1 text-xs text-muted">Solo lo ven los de la liga</p>
+      <p className="mb-3 px-1 text-xs text-muted">Solo lo ven los de la liga · aquí se cuenta en directo lo que pasa en el torneo</p>
 
       <ol ref={listRef} className="flex max-h-96 flex-col gap-2.5 overflow-y-auto px-1 py-1">
         {messages?.length === 0 && <li className="py-6 text-center text-sm text-muted">Nadie ha dicho nada todavía. Rompe el hielo.</li>}
         {messages?.map((m) => {
+          // Mensajes del motor: lo que pasa en el torneo (cierre, eagles, líder, ganador)
+          if (m.uid === 'system') {
+            return (
+              <li key={m.id} className="my-1 flex justify-center">
+                <p className="max-w-[92%] rounded-2xl bg-pine/10 px-3.5 py-2 text-center text-[0.82rem] leading-snug font-medium text-pine dark:bg-pine/30">
+                  {m.text}
+                  <span className="mt-0.5 block text-[0.62rem] font-normal text-muted">{m.createdAt ? timeFormat.format(m.createdAt.toDate()) : ''}</span>
+                </p>
+              </li>
+            )
+          }
           const mine = m.uid === user.uid
           return (
             <li key={m.id} className={`group flex items-end gap-2 ${mine ? 'flex-row-reverse' : ''}`}>

@@ -109,12 +109,21 @@ export default function PlayerPage() {
               <p className="label">Puntos en {tournament.shortName ?? tournament.name}</p>
               <Points value={player.points ?? 0} className="mt-1 block text-[3.2rem]" />
             </div>
-            <div className="flex gap-4 text-right text-xs text-muted">
+            <div className="flex gap-3 text-right text-xs text-muted">
               <span>Hoyos<br /><strong className="score text-xl text-pine">{breakdown.holes ?? 0}</strong></span>
               <span>Posición<br /><strong className="score text-xl text-pine">{breakdown.position ?? 0}</strong></span>
               <span>Corte<br /><strong className={`score text-xl ${breakdown.cut < 0 ? 'text-over' : 'text-pine'}`}>{breakdown.cut ?? 0}</strong></span>
+              <span>Bonus<br /><strong className="score text-xl text-pine">{breakdown.bonus ?? 0}</strong></span>
             </div>
           </div>
+          {breakdown.bonus > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {breakdown.bonusDetail.streaks > 0 && <span className="rounded-full bg-mint/40 px-2.5 py-1 text-xs font-semibold text-pine-dark">🔥 Racha de birdies ×{breakdown.bonusDetail.streaks}</span>}
+              {breakdown.bonusDetail.bogeyFree > 0 && <span className="rounded-full bg-mint/40 px-2.5 py-1 text-xs font-semibold text-pine-dark">✨ Ronda sin bogeys ×{breakdown.bonusDetail.bogeyFree}</span>}
+              {breakdown.bonusDetail.holesInOne > 0 && <span className="rounded-full bg-gold/30 px-2.5 py-1 text-xs font-semibold text-[#5c4508]">⛳ Hoyo en uno ×{breakdown.bonusDetail.holesInOne}</span>}
+              {breakdown.bonusDetail.allUnderPar && <span className="rounded-full bg-mint/40 px-2.5 py-1 text-xs font-semibold text-pine-dark">📉 Todas bajo par</span>}
+            </div>
+          )}
           {player.holes && (
             <div className="mt-4 grid grid-cols-5 gap-2">
               {HOLE_STATS.map(([key, label]) => (
