@@ -1,0 +1,57 @@
+// Reglas de puntuación. Las comparten la web (para enseñarlas) y el motor (para calcular).
+import { isEliminated } from './espn.js'
+
+export const TEAM_SIZE = 6
+export const BUDGET = 100
+export const CAPTAIN_MULTIPLIER = 1.5
+
+export const HOLE_POINTS = { albatross: 8, eagles: 5, birdies: 3, pars: 1, bogeys: -1, doubles: -2 }
+export const CUT_POINTS = { made: 5, missed: -10 }
+
+// Bonus por posición: [hasta el puesto, puntos]. Se aplica en directo con la posición actual.
+export const POSITION_POINTS = [
+  [1, 30], [2, 25], [3, 22], [4, 19], [5, 16],
+  [10, 12], [15, 8], [20, 5], [30, 3],
+]
+
+/** Explicación de cada regla, para la pantalla de reglas. */
+export const RULES = [
+  { label: 'Albatros', points: HOLE_POINTS.albatross },
+  { label: 'Eagle', points: HOLE_POINTS.eagles },
+  { label: 'Birdie', points: HOLE_POINTS.birdies },
+  { label: 'Par', points: HOLE_POINTS.pars },
+  { label: 'Bogey', points: HOLE_POINTS.bogeys },
+  { label: 'Doble bogey o peor', points: HOLE_POINTS.doubles },
+  { label: 'Pasa el corte', points: CUT_POINTS.made },
+  { label: 'No pasa el corte o se retira', points: CUT_POINTS.missed },
+]
+
+export function positionPoints(position) {
+  if (!position) return 0
+  return POSITION_POINTS.find(([upTo]) => position <= upTo)?.[1] ?? 0
+}
+
+/**
+ * ¿Se ha resuelto ya el corte? Solo en torneos con corte, a partir de la ronda siguiente
+ * o al terminar. Los retirados pierden puntos aunque el torneo no tenga corte.
+ */
+export function cutPoints(player, tournament) {
+  if (isEliminated(player.status)) return CUT_POINTS.missed
+  const hasCut = tournament.cutRound > 0
+  const cutDone = tournament.status === 'final' || tournament.round > tournament.cutRound
+  return hasCut && cutDone ? CUT_POINTS.made : 0
+}
+
+/** Puntos de un jugador con su desglose: { total, holes, position, cut } */
+export function playerPoints(player, tournament) {
+  const holes = Object.entries(HOLE_POINTS).reduce((sum, [key, pts]) => sum + (player.holes?.[key] ?? 0) * pts, 0)
+  const position = positionPoints(player.position)
+  const cut = cutPoints(player, tournament)
+  return { total: holes + position + cut, holes, position, cut }
+}
+
+/** Puntos de un equipo: suma de sus jugadores, con el capitán multiplicado. */
+export function teamPoints(playerIds, captainId, pointsById) {
+  const total = playerIds.reduce((sum, id) => sum + (pointsById[id] ?? 0) * (id === captainId ? CAPTAIN_MULTIPLIER : 1), 0)
+  return Math.round(total * 10) / 10
+}

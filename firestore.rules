@@ -1,0 +1,130 @@
+rules_version = '2';
+
+// Modelo de datos (ver docs/datos.md):
+//   users/{uid}                          perfil público (nombre y foto)
+//   config/current                       torneo de la semana (lo escribe el motor)
+//   tournaments/{tid}                    torneo (motor)
+//   tournaments/{tid}/players/{pid}      jugadores con precio, estado y puntos (motor)
+//   picks/{tid}_{uid}                    equipo elegido; privado hasta la primera salida
+//   entries/{tid}_{uid}                  equipo publicado con sus puntos (motor)
+//   leagues/{lid}, leagueCodes/{code}    ligas privadas y su código de invitación
+//   seasons/{year}/standings/{uid}       clasificación de la temporada (motor)
+// El motor usa la cuenta de servicio de Firebase, que no pasa por estas reglas.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isUser(uid) { return signedIn() && request.auth.uid == uid; }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function isText(value, min, max) { return value is string && value.size() >= min && value.size() <= max; }
+    function isOptionalText(value, max) { return value == null || (value is string && value.size() <= max); }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isUser(uid)
+        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'isAdmin', 'createdAt'])
+        && isText(request.resource.data.displayName, 1, 60)
+        && isOptionalText(request.resource.data.photoURL, 500)
+        && request.resource.data.isAdmin == false
+        && request.resource.data.createdAt == request.time;
+      // isAdmin solo se cambia desde la consola de Firebase
+      allow update: if isUser(uid)
+        && onlyChanges(['displayName', 'photoURL'])
+        && isText(request.resource.data.displayName, 1, 60)
+        && isOptionalText(request.resource.data.photoURL, 500);
+    }
+
+    match /config/{doc} {
+      allow read: if signedIn();
+    }
+
+    match /tournaments/{tid} {
+      allow read: if signedIn();
+      match /players/{pid} {
+        allow read: if signedIn();
+      }
+    }
+
+    match /entries/{id} {
+      allow read: if signedIn();
+    }
+
+    match /seasons/{year}/standings/{uid} {
+      allow read: if signedIn();
+    }
+
+    // Equipo: 6 jugadores distintos del torneo, un capitán entre ellos, sin pasarse de 100M
+    // y solo antes de la primera salida. El coste se comprueba con los precios guardados.
+    match /picks/{id} {
+      function tournament() { return get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)).data; }
+      function price(i) {
+        return get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)/players/$(request.resource.data.playerIds[i])).data.price;
+      }
+      function validPicks() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['uid', 'tournamentId', 'playerIds', 'captainId', 'cost', 'displayName', 'photoURL', 'updatedAt'])
+          && d.uid == request.auth.uid
+          && id == d.tournamentId + '_' + d.uid
+          && d.playerIds is list && d.playerIds.size() == 6 && d.playerIds.toSet().size() == 6
+          && d.captainId in d.playerIds
+          && isText(d.displayName, 1, 60)
+          && isOptionalText(d.photoURL, 500)
+          && d.updatedAt == request.time
+          && request.time < tournament().firstTeeTime
+          && d.cost == price(0) + price(1) + price(2) + price(3) + price(4) + price(5)
+          && d.cost <= 100;
+      }
+
+      // Por el id y no por resource, para poder consultar el propio equipo aunque aún no exista
+      allow get: if signedIn() && id.matches('.*_' + request.auth.uid);
+      allow create, update: if signedIn() && validPicks();
+    }
+
+    match /leagues/{lid} {
+      function league() { return request.resource.data; }
+
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+
+      // Al crear la liga se crea a la vez su código de invitación (ver leagueCodes)
+      allow create: if signedIn()
+        && league().keys().hasOnly(['name', 'code', 'ownerUid', 'memberIds', 'createdAt'])
+        && isText(league().name, 3, 40)
+        && league().ownerUid == request.auth.uid
+        && league().memberIds == [request.auth.uid]
+        && league().createdAt == request.time
+        && getAfter(/databases/$(database)/documents/leagueCodes/$(league().code)).data.leagueId == lid;
+
+      allow update: if signedIn() && (
+        // Unirse: solo te añades a ti mismo (máximo 50 miembros)
+        (onlyChanges(['memberIds'])
+          && !(request.auth.uid in resource.data.memberIds)
+          && league().memberIds == resource.data.memberIds.concat([request.auth.uid])
+          && league().memberIds.size() <= 50)
+        // Salir: te quitas a ti mismo; el creador no puede salir de su liga
+        || (onlyChanges(['memberIds'])
+          && request.auth.uid != resource.data.ownerUid
+          && request.auth.uid in resource.data.memberIds
+          && league().memberIds.toSet() == resource.data.memberIds.toSet().difference([request.auth.uid].toSet()))
+        // Renombrar: solo el creador
+        || (onlyChanges(['name'])
+          && request.auth.uid == resource.data.ownerUid
+          && isText(league().name, 3, 40))
+      );
+
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerUid;
+    }
+
+    // Código de invitación → liga. Se puede consultar un código concreto, pero no listarlos.
+    match /leagueCodes/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && code.matches('^[A-Z0-9]{6}$')
+        && request.resource.data.keys().hasOnly(['leagueId'])
+        && getAfter(/databases/$(database)/documents/leagues/$(request.resource.data.leagueId)).data.ownerUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/leagues/$(request.resource.data.leagueId)).data.code == code;
+      allow delete: if signedIn()
+        && get(/databases/$(database)/documents/leagues/$(resource.data.leagueId)).data.ownerUid == request.auth.uid;
+    }
+  }
+}
