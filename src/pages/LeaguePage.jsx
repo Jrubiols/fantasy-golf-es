@@ -9,6 +9,7 @@ import { formatDateRange } from '../utils/format'
 import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
+import { drawLeagueSummary, shareImage } from '../lib/shareImage'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Icon from '../components/ui/Icon'
@@ -154,6 +155,7 @@ function LeagueDetail({ leagueId }) {
   const [league, setLeague] = useState(undefined)
   const [view, setView] = useState('tournament')
   const [copied, setCopied] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const tournament = useCurrentTournament()
   const { locked } = useLocked(tournament)
   const { players, byId } = usePlayers(locked ? tournament?.id : null)
@@ -201,6 +203,20 @@ function LeagueDetail({ leagueId }) {
         setTimeout(() => setCopied(false), 2000)
       }
     } catch { /* el usuario cerró el diálogo de compartir */ }
+  }
+
+  // Imagen con el podio de la liga y el MVP, lista para WhatsApp
+  async function shareSummary() {
+    setSharing(true)
+    try {
+      const picked = new Set((entries ?? []).filter((e) => memberIds.includes(e.uid)).flatMap((e) => e.playerIds))
+      const mvp = [...picked].map((id) => byId[id]).filter(Boolean).sort((a, b) => b.points - a.points)[0]
+      const blob = await drawLeagueSummary({ league, tournament, rows: tournamentRows, mvp, url: inviteLink(league.code) })
+      await shareImage(blob, { filename: `${league.name}-${tournament.shortName ?? tournament.name}.png`.replace(/\s+/g, '-'), text: `${league.name} · ${tournament.name}` })
+    } catch (err) {
+      console.error('No se pudo crear el resumen:', err)
+    }
+    setSharing(false)
   }
 
   async function handleRename() {
@@ -267,6 +283,12 @@ function LeagueDetail({ leagueId }) {
           ) : undefined}
           meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
         />
+      )}
+
+      {view === 'tournament' && locked && tournamentRows?.some((r) => r.points != null) && (
+        <button className="btn-primary mt-4 w-full" onClick={shareSummary} disabled={sharing}>
+          <Icon name="share" className="size-4" />{sharing ? 'Preparando imagen...' : 'Compartir resumen'}
+        </button>
       )}
 
       {view === 'tournament' && locked && tournament?.status !== 'scheduled' && (
