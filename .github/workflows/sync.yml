@@ -13,6 +13,11 @@ concurrency:
   group: sync
   cancel-in-progress: false
 
+# Permiso para reactivar este flujo (ver el último paso)
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -33,3 +38,10 @@ jobs:
           node scripts/sync.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      # GitHub desactiva las tareas programadas de un repositorio público tras 60 días sin
+      # cambios. Reactivar el flujo reinicia esa cuenta, así el motor no se para nunca.
+      - name: Mantener activo el flujo
+        if: github.event_name == 'schedule'
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/sync.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}
