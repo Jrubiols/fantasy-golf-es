@@ -2,9 +2,9 @@
 // Lo ejecuta GitHub Actions cada 15 minutos (scripts/sync.mjs). Es idempotente: si se ejecuta
 // dos veces seguidas, la segunda no cambia nada.
 import { Timestamp } from 'firebase-admin/firestore'
-import { fetchLeaderboard, fetchPlayerOverview, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
+import { fetchLeaderboard, fetchPlayerOverview, fetchScoreboard, isEliminated, parseHoleStats, parsePlayerOverview, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { birdiesLine, outcome, PROPS_PER_ROUND, roundStat, seasonAverages, strokesLine } from '../src/lib/props.js'
-import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
+import { formAdjustment, OWGR_URL, parseOwgr, priceField, withForm } from '../src/lib/pricing.js'
 import { applySubstitutions, CHIPS, playerPoints, teamPoints, withdrewBeforeStart } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
 import { detectMoments, isBigMoment, leaders, momentsMessage, momentText } from './moments.mjs'
@@ -85,8 +85,19 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
   // 2. Precios: se fijan una vez y no cambian; los jugadores que entran tarde se valoran al llegar
   const unpriced = players.filter((p) => storedPlayers.get(p.id)?.price == null)
   let prices = {}
+  const forms = {}
   if (unpriced.length) {
     prices = priceField(players, parseOwgr(await sources.owgr()))
+    // Forma reciente (últimos torneos en ESPN): ajusta el precio de −2M a +3M
+    if (sources.overview) {
+      for (let i = 0; i < unpriced.length; i += 6) {
+        await Promise.all(unpriced.slice(i, i + 6).map(async (p) => {
+          const overview = await sources.overview(p.id, tournament.tour).catch(() => null)
+          const recent = parsePlayerOverview(overview).recent.filter((r) => r.id !== tournament.id)
+          forms[p.id] = formAdjustment(recent)
+        }))
+      }
+    }
     summary.priced = unpriced.length
   }
 
@@ -105,7 +116,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     const stored = storedPlayers.get(player.id) ?? {}
     const data = {
       ...player,
-      price: stored.price ?? prices[player.id]?.price,
+      price: stored.price ?? (prices[player.id] ? withForm(prices[player.id].price, forms[player.id]?.adjustment ?? 0) : undefined),
+      form: stored.price != null ? stored.form ?? null : forms[player.id]?.form ?? null,
+      trend: stored.price != null ? stored.trend ?? null : forms[player.id]?.trend ?? null,
       owgr: stored.price != null ? stored.owgr ?? null : prices[player.id]?.owgr ?? null,
       // Si el scoreboard ya no trae este torneo, se conservan los últimos golpes guardados
       holes: holes[player.id] ?? stored.holes ?? null,

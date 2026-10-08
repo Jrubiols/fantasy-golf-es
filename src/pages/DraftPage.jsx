@@ -51,8 +51,8 @@ function ScoringRules() {
         </div>
       </div>
       <p className="mt-4 text-muted">
-        Tu <strong className="text-pine">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR) y
-        se fijan al publicarse los inscritos. Puedes cambiar el equipo cuantas veces quieras hasta la primera salida del torneo.
+        Tu <strong className="text-pine">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR), ajustados
+        por la forma de sus últimos 4 torneos (▲ hasta +3M, ▼ hasta −2M), y se fijan al publicarse los inscritos. Puedes cambiar el equipo cuantas veces quieras hasta la primera salida del torneo.
         Si un golfista tuyo se retira antes de jugar, entra solo el más caro que quepa en tu presupuesto (y hereda la capitanía).
         Comodines, uno de cada por temporada: <strong className="text-pine">Triple capitán</strong> (x3) y <strong className="text-pine">Séptimo hombre</strong> (7 golfistas con los mismos 100M).
       </p>
@@ -291,10 +291,17 @@ export default function DraftPage() {
                       <span className="truncate font-semibold">{player.name}</span>
                       {isSelected && player.id === captainId && <span className="inline-flex h-5 items-center rounded-full px-1.5 text-[0.68rem] font-bold text-white" style={{ background: club.bg }}>C</span>}
                     </span>
-                    <span className="block text-xs text-muted">{player.country}{player.owgr ? ` · OWGR #${player.owgr}` : ''}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {player.owgr ? `OWGR #${player.owgr}` : player.country}
+                      {player.form?.length > 0 && ` · forma ${player.form.join(' · ')}`}
+                    </span>
                   </span>
                   </Link>
-                  <span className="score text-[1.5rem] text-pine">{formatPrice(player.price)}</span>
+                  <span className="flex items-center gap-1">
+                    {player.trend === 'up' && <span className="text-sm font-bold text-under" title="En racha: su precio sube por forma">▲</span>}
+                    {player.trend === 'down' && <span className="text-sm font-bold text-over" title="Fuera de forma: su precio baja">▼</span>}
+                    <span className="score text-[1.5rem] text-pine">{formatPrice(player.price)}</span>
+                  </span>
                   <button
                     onClick={() => toggle(player)}
                     disabled={disabled}

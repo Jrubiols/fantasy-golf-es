@@ -33,3 +33,14 @@ test('todas las rondas bajo par: solo al terminar el torneo', () => {
   assert.equal(bonusPoints({ scorecard }, tournament).allUnderPar, false)
   assert.equal(bonusPoints({ scorecard }, { ...tournament, status: 'final' }).allUnderPar, true)
 })
+
+test('precio por forma: sube en racha, baja fuera de forma, nunca fuera de 4-25M', async () => {
+  const { formAdjustment, withForm } = await import('../src/lib/pricing.js')
+  const r = (position) => ({ position, finished: true })
+  assert.equal(formAdjustment([r('1'), r('T3'), r('2'), r('T5')]).adjustment, 3)
+  assert.equal(formAdjustment([r('CUT'), r('CUT'), r('T70'), r('CUT')]).adjustment, -2)
+  assert.equal(formAdjustment([r('T30'), r('T25'), r('T40'), r('T20')]).trend, 'flat')
+  assert.deepEqual(formAdjustment([]).form, [])
+  assert.equal(withForm(24, 3), 25)
+  assert.equal(withForm(4.5, -2), 4)
+})

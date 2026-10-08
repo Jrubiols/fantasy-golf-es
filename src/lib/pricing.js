@@ -70,3 +70,32 @@ export function priceField(players, ranking) {
     }]),
   )
 }
+
+// Forma reciente: puntuación de 0 a 1 por cada torneo terminado según el puesto final
+function finishScore(position) {
+  const n = parseInt(String(position).replace(/^T/, ''), 10)
+  if (!Number.isFinite(n)) return 0 // corte, retirado
+  if (n === 1) return 1
+  if (n <= 5) return 0.8
+  if (n <= 10) return 0.65
+  if (n <= 25) return 0.4
+  if (n <= 50) return 0.2
+  return 0.1
+}
+
+/**
+ * Ajuste de precio por forma: media de los últimos 4 torneos terminados, de −2M (fuera de forma)
+ * a +3M (en racha), al medio millón. Un jugador "normal" (~0,3) no cambia.
+ * Devuelve { adjustment, form: ['T3', 'T63', ...], trend: 'up' | 'down' | 'flat' }.
+ */
+export function formAdjustment(recent) {
+  const last = recent.filter((r) => r.finished).slice(0, 4)
+  if (!last.length) return { adjustment: 0, form: [], trend: 'flat' }
+  const score = last.reduce((s, r) => s + finishScore(r.position), 0) / last.length
+  const raw = score >= 0.3 ? ((score - 0.3) / 0.5) * 3 : ((score - 0.3) / 0.3) * 2
+  const adjustment = Math.max(-2, Math.min(3, Math.round(raw * 2) / 2))
+  return { adjustment, form: last.map((r) => r.position), trend: adjustment > 0 ? 'up' : adjustment < 0 ? 'down' : 'flat' }
+}
+
+/** Precio final: el del ranking más el ajuste por forma, siempre entre el mínimo y el máximo. */
+export const withForm = (price, adjustment) => Math.max(MIN_PRICE, Math.min(MAX_PRICE, price + adjustment))
