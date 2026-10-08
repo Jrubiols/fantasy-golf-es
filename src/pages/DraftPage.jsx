@@ -234,6 +234,7 @@ export default function DraftPage() {
               const disabled = !isSelected && (selected.length >= TEAM_SIZE || budgetLeft < player.price)
               return (
                 <li key={player.id} className={`row ${disabled ? 'opacity-45' : ''}`}>
+                  <Link to={`/jugador/${tournament.id}/${player.id}`} className="flex min-w-0 flex-1 items-center gap-3" aria-label={`Ficha de ${player.name}`}>
                   <PlayerPhoto src={player.photoURL} name={player.name} bg={isSelected && player.id === captainId ? club.bg : '#11663a'} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
@@ -242,6 +243,7 @@ export default function DraftPage() {
                     </span>
                     <span className="block text-xs text-muted">{player.country}{player.owgr ? ` · OWGR #${player.owgr}` : ''}</span>
                   </span>
+                  </Link>
                   <span className="score text-[1.5rem] text-pine">{formatPrice(player.price)}</span>
                   <button
                     onClick={() => toggle(player)}

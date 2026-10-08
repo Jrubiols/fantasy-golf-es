@@ -89,9 +89,10 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
 
   // 3. Golpes hoyo a hoyo: el scoreboard solo trae el torneo de esta semana
   let holes = {}
+  let cards = {}
   if (tournament.status !== 'scheduled') {
     const holeStats = parseHoleStats(await sources.scoreboard(), tournament.holePars)
-    if (holeStats.eventId === tournament.id) holes = holeStats.holes
+    if (holeStats.eventId === tournament.id) ({ holes, cards } = holeStats)
   }
 
   const pointsById = {}
@@ -104,6 +105,8 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
       owgr: stored.price != null ? stored.owgr ?? null : prices[player.id]?.owgr ?? null,
       // Si el scoreboard ya no trae este torneo, se conservan los últimos golpes guardados
       holes: holes[player.id] ?? stored.holes ?? null,
+      // Tarjeta hoyo a hoyo para la ficha del jugador
+      scorecard: cards[player.id] ?? stored.scorecard ?? null,
     }
     const points = playerPoints(data, tournament)
     data.points = points.total

@@ -14,6 +14,7 @@ const AdminPage = lazy(() => import('./pages/admin/AdminPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const JoinPage = lazy(() => import('./pages/JoinPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const PlayerPage = lazy(() => import('./pages/PlayerPage'))
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
                 <Route path="/perfil" element={<ProfilePage />} />
                 <Route path="/unirse/:code" element={<JoinPage />} />
                 <Route path="/historial" element={<HistoryPage />} />
+                <Route path="/jugador/:tournamentId/:playerId" element={<PlayerPage />} />
                 <Route element={<ProtectedRoute adminOnly />}>
                   <Route path="/admin" element={<AdminPage />} />
                 </Route>

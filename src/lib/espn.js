@@ -132,18 +132,23 @@ export function parsePlayers(leaderboard) {
 }
 
 /**
- * Cuenta el resultado de cada hoyo jugado, por jugador, a partir del scoreboard.
- * Devuelve { eventId, holes: { [playerId]: { albatross, eagles, birdies, pars, bogeys, doubles, played } } }.
+ * Cuenta el resultado de cada hoyo jugado, por jugador, a partir del scoreboard, y guarda su tarjeta.
+ * Devuelve { eventId, holes: { [playerId]: { albatross, eagles, birdies, pars, bogeys, doubles, played } },
+ *            cards: { [playerId]: [{ round, strokes: [golpes del hoyo 1..18, null si no jugado] }] } }.
  * El par de cada hoyo viene del leaderboard; si falta, se usa el que da ESPN en el propio hoyo.
  */
 export function parseHoleStats(scoreboard, holePars = {}) {
   const event = scoreboard?.events?.[0]
   const competitors = event?.competitions?.[0]?.competitors ?? []
   const holes = {}
+  const cards = {}
   for (const c of competitors) {
     const stats = { albatross: 0, eagles: 0, birdies: 0, pars: 0, bogeys: 0, doubles: 0, played: 0 }
+    const card = []
     for (const round of c.linescores ?? []) {
+      const strokes = Array(18).fill(null)
       for (const hole of round.linescores ?? []) {
+        if (hole.value != null && hole.period >= 1 && hole.period <= 18) strokes[hole.period - 1] = hole.value
         const diff = holeToPar(hole, holePars[hole.period])
         if (diff == null) continue
         stats.played++
@@ -154,10 +159,13 @@ export function parseHoleStats(scoreboard, holePars = {}) {
         else if (diff === 1) stats.bogeys++
         else stats.doubles++
       }
+      if (strokes.some((v) => v != null)) card.push({ round: round.period, strokes })
     }
-    holes[String(c.athlete?.id ?? c.id)] = stats
+    const id = String(c.athlete?.id ?? c.id)
+    holes[id] = stats
+    cards[id] = card
   }
-  return { eventId: event?.id ?? null, holes }
+  return { eventId: event?.id ?? null, holes, cards }
 }
 
 function holeToPar(hole, par) {
@@ -166,4 +174,36 @@ function holeToPar(hole, par) {
   const type = hole.scoreType?.displayValue
   if (type === 'OTHER') return hole.value >= 6 ? 3 : -3
   return parseToPar(type)
+}
+
+const ATHLETE_URL = 'https://site.web.api.espn.com/apis/common/v3/sports/golf'
+
+/** Resumen de un golfista: últimos torneos y temporada (ESPN permite pedirlo desde el navegador). */
+export function fetchPlayerOverview(playerId, tour = TOUR) {
+  return getJson(`${ATHLETE_URL}/${tour}/athletes/${playerId}/overview`)
+}
+
+/**
+ * { recent: [{ id, name, date, position, score, finished }], season: { events, cuts, top10, wins, average, earnings } | null }
+ * `recent` va del más reciente al más antiguo.
+ */
+export function parsePlayerOverview(overview) {
+  const events = overview?.recentTournaments?.[0]?.eventsStats ?? []
+  const recent = events.map((e) => {
+    const c = e.competitions?.[0]?.competitors?.[0] ?? {}
+    return {
+      id: e.id,
+      name: e.shortName ?? e.name,
+      date: e.date,
+      position: c.status?.position?.displayName ?? '-',
+      score: c.score?.displayValue ?? '',
+      finished: c.status?.type?.state === 'post' || c.status?.type?.shortDetail === 'F',
+    }
+  })
+  const split = overview?.statistics?.splits?.find((s) => /tour/i.test(s.displayName)) ?? overview?.statistics?.splits?.[0]
+  const [events_, cuts, top10, wins, average, earnings] = split?.stats ?? []
+  return {
+    recent,
+    season: split ? { events: events_, cuts, top10, wins, average, earnings } : null,
+  }
 }
