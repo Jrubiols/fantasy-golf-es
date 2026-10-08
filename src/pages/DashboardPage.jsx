@@ -85,7 +85,7 @@ function MyLeagues({ user, season, liveEntry }) {
             <li key={l.id}>
               <Link to={`/league/${l.id}`} className="list-row justify-between hover:bg-white/7">
                 <span className="font-medium text-gold-500">{l.name}</span>
-                <span className="text-xs text-muted">{l.memberIds.length} participantes →</span>
+                <span className="text-xs text-muted">{l.memberIds.length} {l.memberIds.length === 1 ? 'participante' : 'participantes'} →</span>
               </Link>
             </li>
           ))}
