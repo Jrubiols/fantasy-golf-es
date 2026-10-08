@@ -11,6 +11,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600;700&display=swap" />
     <title>Fantasy Golf ES</title>
+    <script>
+      // Tema guardado antes de pintar, para que no parpadee (ver src/lib/theme.js)
+      try {
+        var pref = localStorage.getItem('fg-theme') || 'auto'
+        var dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b1410')
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

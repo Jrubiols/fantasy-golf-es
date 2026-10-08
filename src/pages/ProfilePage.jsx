@@ -9,6 +9,8 @@ import ClubCard from '../components/ui/ClubCard'
 import Icon from '../components/ui/Icon'
 import PushCard from '../components/ui/PushCard'
 import Achievements from '../components/ui/Achievements'
+import Tabs from '../components/ui/Tabs'
+import { getThemePref, setThemePref } from '../lib/theme'
 import { subscribeMyEntries } from '../services/firestoreService'
 
 export default function ProfilePage() {
@@ -20,6 +22,7 @@ export default function ProfilePage() {
   const [status, setStatus] = useState(null)
   const [saving, setSaving] = useState(false)
   const [entries, setEntries] = useState(null)
+  const [theme, setTheme] = useState(getThemePref)
   useEffect(() => subscribeMyEntries(user.uid, setEntries, () => setEntries([])), [user.uid])
 
   const dirty = color !== current.id || clubName.trim() !== (profile?.clubName ?? '')
@@ -76,6 +79,15 @@ export default function ProfilePage() {
       </form>
 
       <div className="mt-5 animate-fade-up [animation-delay:140ms]"><PushCard /></div>
+
+      <section className="card mt-5 p-5">
+        <h2 className="headline mb-3 text-[1.5rem]">Apariencia</h2>
+        <Tabs
+          tabs={[{ id: 'auto', label: 'Automático' }, { id: 'light', label: 'Claro' }, { id: 'dark', label: 'Oscuro' }]}
+          value={theme}
+          onChange={(t) => { setTheme(t); setThemePref(t) }}
+        />
+      </section>
 
       {entries && <div className="mt-5"><Achievements entries={entries} /></div>}
 
