@@ -4,7 +4,7 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { fetchLeaderboard, fetchScoreboard, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
-import { playerPoints, teamPoints } from '../src/lib/scoring.js'
+import { applySubstitutions, playerPoints, teamPoints } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
 
 export const defaultSources = {
@@ -96,6 +96,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
   }
 
   const pointsById = {}
+  const fieldPlayers = []
   const playerWrites = []
   for (const player of players) {
     const stored = storedPlayers.get(player.id) ?? {}
@@ -112,6 +113,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     data.points = points.total
     data.pointsBreakdown = points
     pointsById[player.id] = points.total
+    fieldPlayers.push(data)
     if (!sameData(stored, data)) playerWrites.push({ ref: playersRef.doc(player.id), data })
   }
   summary.players = await commitAll(db, playerWrites)
@@ -150,7 +152,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     const clubs = new Map((userRefs.length ? await db.getAll(...userRefs) : []).map((u) => [u.id, u.data() ?? {}]))
     const teams = picksSnap.docs.map((d) => {
       const p = d.data()
-      return { id: d.id, ...p, points: teamPoints(p.playerIds, p.captainId, pointsById) }
+      // Quien se retira antes de jugar se sustituye solo (ver applySubstitutions)
+      const team = applySubstitutions(p.playerIds, p.captainId, fieldPlayers)
+      return { id: d.id, ...p, ...team, originalPlayerIds: p.playerIds, points: teamPoints(team.playerIds, team.captainId, pointsById) }
     })
     const entryWrites = rankBy(teams, (t) => t.points).map(({ item: t, rank }) => ({
       ref: db.collection('entries').doc(t.id),
@@ -166,6 +170,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         clubName: clubs.get(t.uid)?.clubName ?? null,
         playerIds: t.playerIds,
         captainId: t.captainId,
+        substitutions: t.substitutions,
         cost: t.cost,
         points: t.points,
         rank,

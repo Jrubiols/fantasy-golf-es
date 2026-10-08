@@ -55,3 +55,31 @@ export function teamPoints(playerIds, captainId, pointsById) {
   const total = playerIds.reduce((sum, id) => sum + (pointsById[id] ?? 0) * (id === captainId ? CAPTAIN_MULTIPLIER : 1), 0)
   return Math.round(total * 10) / 10
 }
+
+/** Se retiró antes de dar un golpe (o ya no figura entre los inscritos). */
+export const withdrewBeforeStart = (player) => !player || (player.status === 'wd' && !player.rounds?.length)
+
+/**
+ * Sustituto automático: cada golfista que se retira antes de jugar se cambia por el más caro
+ * que quepa en el presupuesto y no esté ya en el equipo. Si era el capitán, el sustituto hereda
+ * la capitanía. Devuelve { playerIds, captainId, substitutions: [{ out, in }] }.
+ */
+export function applySubstitutions(playerIds, captainId, players) {
+  const byId = new Map(players.map((p) => [p.id, p]))
+  const candidates = players
+    .filter((p) => p.price != null && !withdrewBeforeStart(p))
+    .sort((a, b) => b.price - a.price || a.id.localeCompare(b.id))
+
+  let ids = [...playerIds]
+  let captain = captainId
+  const substitutions = []
+  for (const outId of playerIds.filter((id) => withdrewBeforeStart(byId.get(id)))) {
+    const spent = ids.filter((id) => id !== outId).reduce((sum, id) => sum + (byId.get(id)?.price ?? 0), 0)
+    const replacement = candidates.find((p) => !ids.includes(p.id) && p.price <= BUDGET - spent)
+    if (!replacement) continue
+    ids = ids.map((id) => (id === outId ? replacement.id : id))
+    if (captain === outId) captain = replacement.id
+    substitutions.push({ out: outId, in: replacement.id })
+  }
+  return { playerIds: ids, captainId: captain, substitutions }
+}

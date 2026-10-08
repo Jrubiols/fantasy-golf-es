@@ -6,7 +6,7 @@ import { before, describe, test } from 'node:test'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { rankBy, sync } from '../scripts/engine.mjs'
-import { TEAM_SIZE } from '../src/lib/scoring.js'
+import { applySubstitutions, TEAM_SIZE } from '../src/lib/scoring.js'
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'))
 const live = fixture('leaderboard-live')
@@ -188,5 +188,47 @@ describe('avisos al móvil', () => {
     assert.equal(titles.length, 2)
     assert.ok(titles.some((t) => /Has ganado/.test(t)))
     assert.ok(titles.some((t) => /terminaste 2º de 2/.test(t)))
+  })
+})
+
+describe('sustituto automático', () => {
+  const field = [
+    { id: 'a', price: 25, status: 'finished', rounds: [70] },
+    { id: 'b', price: 20, status: 'finished', rounds: [70] },
+    { id: 'c', price: 18, status: 'wd', rounds: [] },
+    { id: 'd', price: 15, status: 'finished', rounds: [70] },
+    { id: 'e', price: 12, status: 'wd', rounds: [75] },
+    { id: 'f', price: 10, status: 'finished', rounds: [70] },
+    { id: 'g', price: 8, status: 'finished', rounds: [70] },
+    { id: 'h', price: 5, status: 'finished', rounds: [70] },
+  ]
+
+  test('el que se retira antes de jugar se cambia por el más caro que quepa', () => {
+    // Equipo de 98M: sin c (18) quedan 80M gastados, cabe hasta 20M → entra b
+    const r = applySubstitutions(['a', 'c', 'd', 'e', 'f', 'g'], 'c', field)
+    assert.deepEqual(r.substitutions, [{ out: 'c', in: 'b' }])
+    assert.equal(r.captainId, 'b')
+    assert.deepEqual(r.playerIds, ['a', 'b', 'd', 'e', 'f', 'g'])
+  })
+
+  test('quien se retira después de empezar no se sustituye', () => {
+    const r = applySubstitutions(['a', 'b', 'd', 'e', 'f', 'g'], 'a', field)
+    assert.deepEqual(r.substitutions, [])
+  })
+
+  test('en el motor: el equipo publicado ya lleva el cambio', async () => {
+    await clear()
+    const id = final.events[0].id
+    await sync(db, { sources: sources(final), now: new Date('2026-09-30T00:00:00Z'), log: quiet })
+    const players = (await db.collection(`tournaments/${id}/players`).get()).docs.map((d) => d.data())
+    const cheap = players.filter((p) => p.price <= 8 && p.status !== 'wd').slice(0, 5).map((p) => p.id)
+    const team = ['4858859', ...cheap] // Neergaard-Petersen se retiró sin jugar
+    await db.doc(`picks/${id}_ana`).set({ uid: 'ana', tournamentId: id, playerIds: team, captainId: '4858859', cost: 50, displayName: 'Ana', photoURL: null })
+    await sync(db, { sources: sources(final), now: new Date('2026-10-05T00:00:00Z'), log: quiet })
+    const entry = (await db.doc(`entries/${id}_ana`).get()).data()
+    assert.equal(entry.substitutions.length, 1)
+    assert.equal(entry.substitutions[0].out, '4858859')
+    assert.ok(!entry.playerIds.includes('4858859'))
+    assert.equal(entry.captainId, entry.substitutions[0].in)
   })
 })

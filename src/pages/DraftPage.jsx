@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
-import { getMyPicks, savePicks } from '../services/firestoreService'
+import { getMyPicks, savePicks, subscribeEntry } from '../services/firestoreService'
 import { BUDGET, CAPTAIN_MULTIPLIER, POSITION_POINTS, RULES, TEAM_SIZE } from '../lib/scoring'
 import { clubColor } from '../lib/clubs'
 import { formatPrice } from '../utils/format'
@@ -52,6 +52,7 @@ function ScoringRules() {
       <p className="mt-4 text-muted">
         Tu <strong className="text-pine">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR) y
         se fijan al publicarse los inscritos. Puedes cambiar el equipo cuantas veces quieras hasta la primera salida del torneo.
+        Si un golfista tuyo se retira antes de jugar, entra solo el más caro que quepa en tu presupuesto (y hereda la capitanía).
       </p>
     </details>
   )
@@ -71,6 +72,12 @@ export default function DraftPage() {
   const [sort, setSort] = useState('price')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(null)
+  const [entry, setEntry] = useState(null)
+
+  useEffect(() => {
+    if (!locked || !tournament?.id || !user) return
+    return subscribeEntry(tournament.id, user.uid, setEntry, () => setEntry(null))
+  }, [locked, tournament?.id, user])
 
   useEffect(() => {
     if (!tournament?.id || !user) return
@@ -116,7 +123,7 @@ export default function DraftPage() {
                 <span className="label">Equipos cerrados · ya cuentan los puntos</span>
                 <span className="text-xs text-muted">Coste {formatPrice(saved.cost)}</span>
               </div>
-              <TeamList playerIds={saved.playerIds} captainId={saved.captainId} playersById={byId} clubBg={club.bg} tournamentId={tournament.id} />
+              <TeamList playerIds={(entry ?? saved).playerIds} captainId={(entry ?? saved).captainId} substitutions={entry?.substitutions} playersById={byId} clubBg={club.bg} tournamentId={tournament.id} />
               <Link to="/league" className="btn-secondary my-3 w-full">Ver mis ligas</Link>
             </>
           ) : (

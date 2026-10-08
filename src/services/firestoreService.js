@@ -52,6 +52,11 @@ export function subscribeEntries(tournamentId, callback, onError) {
   return onSnapshot(query(collection(db, 'entries'), where('tournamentId', '==', tournamentId)), (snap) => callback(toList(snap)), onError)
 }
 
+/** El equipo publicado de un usuario en un torneo (con los sustitutos ya aplicados). */
+export function subscribeEntry(tournamentId, uid, callback, onError) {
+  return onSnapshot(doc(db, 'entries', `${tournamentId}_${uid}`), (snap) => callback(toData(snap)), onError)
+}
+
 export function subscribeMyEntries(uid, callback, onError) {
   return onSnapshot(query(collection(db, 'entries'), where('uid', '==', uid)), (snap) => callback(toList(snap)), onError)
 }

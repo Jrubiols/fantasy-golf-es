@@ -262,7 +262,7 @@ function LeagueDetail({ leagueId }) {
           currentUid={user.uid}
           cards={view === 'tournament' && !locked ? 0 : 3}
           renderDetail={view === 'tournament' && locked ? (s) => entryByUid[s.uid] && (
-            <TeamList playerIds={entryByUid[s.uid].playerIds} captainId={entryByUid[s.uid].captainId} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} />
+            <TeamList playerIds={entryByUid[s.uid].playerIds} captainId={entryByUid[s.uid].captainId} substitutions={entryByUid[s.uid].substitutions} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} />
           ) : undefined}
           meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
         />

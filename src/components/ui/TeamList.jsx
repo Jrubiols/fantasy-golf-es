@@ -11,7 +11,8 @@ const showToday = (p) => p.today && p.status === 'active' && (p.rounds?.length ?
  * Los 6 jugadores de un equipo, como una clasificación: puesto, foto, resultado y puntos
  * (el capitán multiplicado y pintado con el color del club). Cada fila lleva a la ficha del jugador.
  */
-export default function TeamList({ playerIds, captainId, playersById, showPoints = true, clubBg = '#0a4a24', tournamentId }) {
+export default function TeamList({ playerIds, captainId, playersById, showPoints = true, clubBg = '#0a4a24', tournamentId, substitutions = [] }) {
+  const replaced = Object.fromEntries(substitutions.map((s) => [s.in, playersById[s.out]?.shortName ?? 'un retirado']))
   const rows = playerIds
     .map((id) => playersById[id] ?? { id, name: 'Jugador retirado del torneo' })
     .map((p) => ({ ...p, isCaptain: p.id === captainId, teamPoints: (p.points ?? 0) * (p.id === captainId ? CAPTAIN_MULTIPLIER : 1) }))
@@ -36,7 +37,9 @@ export default function TeamList({ playerIds, captainId, playersById, showPoints
                       <span className="inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-[0.68rem] font-bold text-white" style={{ background: clubBg }} title={`Capitán: puntos x${CAPTAIN_MULTIPLIER}`}>C</span>
                     )}
                   </span>
-                  {(p.status === 'active' && p.thru > 0 && p.thru < 18) || showToday(p) ? (
+                  {replaced[p.id] ? (
+                    <span className="block text-xs font-medium text-under">Entra por {replaced[p.id]} (retirado)</span>
+                  ) : (p.status === 'active' && p.thru > 0 && p.thru < 18) || showToday(p) ? (
                     <span className="block text-xs text-muted">
                       {p.thru > 0 && p.thru < 18 ? `Hoyo ${p.thru}` : ''}{showToday(p) ? `${p.thru > 0 && p.thru < 18 ? ' · ' : ''}hoy ${p.today}` : ''}
                     </span>
