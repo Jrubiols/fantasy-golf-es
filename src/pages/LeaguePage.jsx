@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
 import { useEntries, useGroupStandings, useProfiles, useSeasonStandings } from '../hooks/useLeagueData'
 import { createLeague, deleteLeague, joinLeague, leaveLeague, renameLeague, subscribeLeague, subscribeMyLeagues } from '../services/firestoreService'
+import { clubColor } from '../lib/clubs'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Icon from '../components/ui/Icon'
@@ -44,18 +45,18 @@ function JoinOrCreate({ uid, onDone }) {
       <form onSubmit={handleSubmit}>
         {mode === 'join' ? (
           <>
-            <label htmlFor="league-code" className="mb-2 block text-sm text-muted">Código que te han pasado</label>
-            <input id="league-code" className="input-field mb-4 font-mono tracking-widest uppercase" placeholder="Ej: AB3X9K" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} maxLength={6} autoComplete="off" />
-            <button type="submit" className="btn-primary w-full" disabled={loading || code.length !== 6}>{loading ? 'Buscando...' : 'Unirme →'}</button>
+            <label htmlFor="league-code" className="label mb-2 block">Código que te han pasado</label>
+            <input id="league-code" className="input-field mb-4 bg-bg text-center font-display text-2xl font-black tracking-[0.3em] text-pine uppercase" placeholder="AB3X9K" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} maxLength={6} autoComplete="off" />
+            <button type="submit" className="btn-primary w-full" disabled={loading || code.length !== 6}>{loading ? 'Buscando...' : 'Unirme'}</button>
           </>
         ) : (
           <>
-            <label htmlFor="league-name" className="mb-2 block text-sm text-muted">Nombre de la liga</label>
-            <input id="league-name" className="input-field mb-4" placeholder="Ej: Liga del Domingo" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
-            <button type="submit" className="btn-primary w-full" disabled={loading}>{loading ? 'Creando...' : 'Crear liga 🏆'}</button>
+            <label htmlFor="league-name" className="label mb-2 block">Nombre de la liga</label>
+            <input id="league-name" className="input-field mb-4 bg-bg" placeholder="Ej: Liga del Domingo" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+            <button type="submit" className="btn-primary w-full" disabled={loading}>{loading ? 'Creando...' : 'Crear liga'}</button>
           </>
         )}
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+        {error && <p className="mt-3 text-sm text-over">{error}</p>}
       </form>
     </section>
   )
@@ -76,20 +77,21 @@ function LeagueList() {
   const leagues = useMyLeagues(user.uid)
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      <PageHeader title="Mis ligas" subtitle="Compite con tus amigos en ligas privadas" />
+    <div className="mx-auto max-w-2xl px-4 pt-4">
+      <PageHeader eyebrow="Ligas privadas" title="Mis ligas" subtitle="Compite con tus amigos torneo a torneo y en la temporada" />
       {leagues === null ? (
-        <Skeleton className="mb-5 h-16" count={2} />
+        <Skeleton className="mb-5 h-20" count={2} />
       ) : leagues.length > 0 && (
-        <ul className="mb-5 flex animate-fade-up flex-col gap-2 [animation-delay:50ms]">
-          {leagues.map((l) => (
-            <li key={l.id}>
-              <Link to={`/league/${l.id}`} className="card flex items-center justify-between px-5 py-4 transition-colors hover:border-gold-500/40">
-                <div>
-                  <p className="font-display text-lg font-bold text-gold-500">{l.name}</p>
-                  <p className="text-xs text-muted">{l.memberIds.length} {l.memberIds.length === 1 ? 'participante' : 'participantes'}{l.ownerUid === user.uid ? ' · la creaste tú' : ''}</p>
+        <ul className="mb-5 flex flex-col gap-3">
+          {leagues.map((l, i) => (
+            <li key={l.id} className="animate-fade-up" style={{ animationDelay: `${i * 50}ms` }}>
+              <Link to={`/league/${l.id}`} className="relative flex items-center justify-between overflow-hidden rounded-[1.6rem] bg-pine px-6 py-5 text-white transition-transform active:scale-[0.99]">
+                <div className="halftone absolute inset-0" />
+                <div className="relative">
+                  <p className="font-display text-[2rem] leading-none font-black uppercase">{l.name}</p>
+                  <p className="mt-1.5 text-xs text-white/75">{l.memberIds.length} {l.memberIds.length === 1 ? 'participante' : 'participantes'}{l.ownerUid === user.uid ? ' · la creaste tú' : ''}</p>
                 </div>
-                <span className="text-muted" aria-hidden="true">→</span>
+                <span className="relative flex size-11 items-center justify-center rounded-full bg-white text-pine"><Icon name="arrow" /></span>
               </Link>
             </li>
           ))}
@@ -137,8 +139,8 @@ function LeagueDetail({ leagueId }) {
   const tournamentRows = useGroupStandings(memberIds, entries, profiles)
   const seasonRows = useGroupStandings(memberIds, liveSeason, profiles)
 
-  if (league === undefined) return <div className="mx-auto max-w-2xl px-4 py-6"><Skeleton className="mb-4 h-10 w-52" /><Skeleton className="h-14" count={4} /></div>
-  if (!league) return <div className="mx-auto max-w-2xl px-4 py-10"><div className="card"><EmptyState title="Esta liga no existe o ya no formas parte de ella." action={<Link to="/league" className="btn-secondary">Volver a mis ligas</Link>} /></div></div>
+  if (league === undefined) return <div className="mx-auto max-w-2xl px-4 pt-4"><Skeleton className="mb-4 h-20 w-64" /><Skeleton className="h-44 rounded-[1.6rem]" count={3} /></div>
+  if (!league) return <div className="mx-auto max-w-2xl px-4 pt-6"><div className="card"><EmptyState title="Esta liga no existe o ya no formas parte de ella." action={<Link to="/league" className="btn-secondary">Volver a mis ligas</Link>} /></div></div>
 
   const isOwner = league.ownerUid === user.uid
 
@@ -171,51 +173,53 @@ function LeagueDetail({ leagueId }) {
     navigate('/league')
   }
 
-  const rows = view === 'tournament' ? tournamentRows : seasonRows
   const entryByUid = Object.fromEntries((entries ?? []).map((e) => [e.uid, e]))
+  // En el torneo, cada tarjeta lleva la foto del capitán de ese jugador
+  const rows = view === 'tournament'
+    ? tournamentRows?.map((r) => ({ ...r, photo: byId[entryByUid[r.uid]?.captainId]?.photoURL }))
+    : seasonRows
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      <Link to="/league" className="mb-3 inline-block text-sm text-muted hover:text-cream">← Mis ligas</Link>
+    <div className="mx-auto max-w-2xl px-4 pt-4">
+      <Link to="/league" className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-pine"><Icon name="back" className="size-4" />Mis ligas</Link>
       <PageHeader title={league.name} subtitle={`${league.memberIds.length} ${league.memberIds.length === 1 ? 'participante' : 'participantes'}`}>
-        {isOwner && <button className="btn-secondary btn-sm" onClick={handleRename}>Renombrar</button>}
+        {isOwner && <button className="btn-ghost btn-sm" onClick={handleRename}>Renombrar</button>}
       </PageHeader>
 
-      <section className="card mb-5 flex animate-fade-up items-center justify-between gap-3 border-gold-500/20 px-5 py-4 [animation-delay:50ms]">
-        <div>
-          <p className="mb-0.5 text-xs text-muted">Código de invitación</p>
-          <span className="font-mono text-2xl font-bold tracking-[0.15em] text-gold-500">{league.code}</span>
-        </div>
-        <button className="btn-secondary btn-sm" onClick={copyInvite}>
-          <Icon name={copied ? 'check' : 'copy'} className="size-4" />
+      <div className="mb-5 flex animate-fade-up items-center gap-2 [animation-delay:50ms]">
+        <span className="inline-flex h-11 items-center gap-2.5 rounded-full bg-surface px-5 text-xs text-muted">
+          CÓDIGO <strong className="font-display text-[1.4rem] font-black tracking-[0.1em] text-pine">{league.code}</strong>
+        </span>
+        <button className="btn-primary h-11" onClick={copyInvite}>
+          <Icon name={copied ? 'check' : 'share'} className="size-4" />
           {copied ? 'Copiado' : 'Invitar'}
         </button>
-      </section>
+      </div>
 
-      <Tabs tabs={VIEWS} value={view} onChange={setView} className="mb-4" />
+      <Tabs tabs={VIEWS} value={view} onChange={setView} className="mb-3" />
+      <p className="mb-4 px-1 text-xs text-muted">
+        {view === 'tournament'
+          ? !tournament ? '' : locked ? `${tournament.name} · pulsa en un participante para ver su equipo` : `${tournament.name} · los equipos se descubren cuando empieza el torneo`
+          : `Temporada ${tournament?.season ?? ''} · suma de todos los torneos, incluido el que está en juego`}
+      </p>
 
-      <section className="card animate-fade-up p-5 [animation-delay:100ms]">
-        <h2 className="mb-1 font-semibold">{view === 'tournament' ? tournament?.name ?? 'Torneo' : `Temporada ${tournament?.season ?? ''}`}</h2>
-        <p className="mb-4 text-xs text-muted">
-          {view === 'tournament'
-            ? locked ? 'Pulsa en un participante para ver su equipo' : 'Los equipos se descubren cuando empieza el torneo'
-            : 'Suma de todos los torneos de la temporada, incluido el que está en juego'}
-        </p>
-        {!tournament ? (
-          <EmptyState title="Todavía no hay torneo esta semana." />
-        ) : !rows ? (
-          <Skeleton className="h-13" count={3} />
-        ) : (
-          <StandingsList
-            rows={rows}
-            currentUid={user.uid}
-            renderDetail={view === 'tournament' && locked ? (s) => entryByUid[s.uid] && <TeamList playerIds={entryByUid[s.uid].playerIds} captainId={entryByUid[s.uid].captainId} playersById={byId} /> : undefined}
-            meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} 🏆` : ''}` : s.live ? 'en juego' : null) : undefined}
-          />
-        )}
-      </section>
+      {!tournament ? (
+        <div className="card"><EmptyState title="Todavía no hay torneo esta semana." /></div>
+      ) : !rows ? (
+        <Skeleton className="h-44 rounded-[1.6rem]" count={3} />
+      ) : (
+        <StandingsList
+          rows={rows}
+          currentUid={user.uid}
+          cards={view === 'tournament' && !locked ? 0 : 3}
+          renderDetail={view === 'tournament' && locked ? (s) => entryByUid[s.uid] && (
+            <TeamList playerIds={entryByUid[s.uid].playerIds} captainId={entryByUid[s.uid].captainId} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} />
+          ) : undefined}
+          meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
+        />
+      )}
 
-      <div className="mt-6 text-center">
+      <div className="mt-8 text-center">
         {isOwner
           ? <button className="btn-danger" onClick={handleDelete}>Borrar liga</button>
           : <button className="btn-danger" onClick={handleLeave}>Salir de la liga</button>}

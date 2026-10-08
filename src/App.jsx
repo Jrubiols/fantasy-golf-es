@@ -11,6 +11,7 @@ const DraftPage = lazy(() => import('./pages/DraftPage'))
 const LeaguePage = lazy(() => import('./pages/LeaguePage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const AdminPage = lazy(() => import('./pages/admin/AdminPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
                 <Route path="/league" element={<LeaguePage />} />
                 <Route path="/league/:leagueId" element={<LeaguePage />} />
                 <Route path="/leaderboard" element={<LeaderboardPage />} />
+                <Route path="/perfil" element={<ProfilePage />} />
                 <Route element={<ProtectedRoute adminOnly />}>
                   <Route path="/admin" element={<AdminPage />} />
                 </Route>

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const THEME = '#0d2818'
+const THEME = '#f6f5f1'
 
 export default defineConfig({
   plugins: [

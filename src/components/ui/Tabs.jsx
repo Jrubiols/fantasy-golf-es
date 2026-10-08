@@ -1,14 +1,14 @@
-// Selector de pestañas segmentado (Torneo / Temporada...)
+// Selector en píldora: la opción activa se rellena de verde
 export default function Tabs({ tabs, value, onChange, className = '' }) {
   return (
-    <div className={`flex rounded-xl bg-white/6 p-1 ${className}`} role="tablist">
+    <div className={`flex h-[3.1rem] rounded-full bg-track p-[5px] ${className}`} role="tablist">
       {tabs.map((t) => (
         <button
           key={t.id}
           role="tab"
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
-          className={`flex-1 rounded-lg px-3 py-2 text-sm transition-all ${value === t.id ? 'bg-pine-900 font-semibold text-cream' : 'text-muted hover:text-cream'}`}
+          className={`flex-1 rounded-full font-display text-[1.2rem] font-extrabold uppercase tracking-wide transition-colors ${value === t.id ? 'bg-pine text-white' : 'text-navy hover:text-pine'}`}
         >
           {t.label}
         </button>

@@ -4,53 +4,53 @@ import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
 import { getMyPicks, savePicks } from '../services/firestoreService'
 import { BUDGET, CAPTAIN_MULTIPLIER, POSITION_POINTS, RULES, TEAM_SIZE } from '../lib/scoring'
+import { clubColor } from '../lib/clubs'
 import { formatPrice } from '../utils/format'
-import PageHeader from '../components/ui/PageHeader'
 import Skeleton from '../components/ui/Skeleton'
 import EmptyState from '../components/ui/EmptyState'
-import Avatar from '../components/ui/Avatar'
 import Icon from '../components/ui/Icon'
+import PlayerPhoto from '../components/ui/PlayerPhoto'
+import Points from '../components/ui/Points'
 import TeamList from '../components/ui/TeamList'
 import TournamentCard from '../components/ui/TournamentCard'
-import Points from '../components/ui/Points'
 
 const SORTS = {
   price: { label: 'Precio', compare: (a, b) => b.price - a.price || a.name.localeCompare(b.name) },
   owgr: { label: 'Ranking', compare: (a, b) => (a.owgr ?? 9999) - (b.owgr ?? 9999) },
   name: { label: 'Nombre', compare: (a, b) => a.name.localeCompare(b.name) },
 }
-
-function Message({ children, action }) {
-  return <div className="mx-auto max-w-4xl px-4 py-10"><div className="card"><EmptyState title={children} action={action} /></div></div>
-}
+const SORT_IDS = Object.keys(SORTS)
 
 function ScoringRules() {
   return (
-    <details className="card mt-5 px-5 py-4 text-sm">
-      <summary className="cursor-pointer font-semibold">¿Cómo se puntúa?</summary>
-      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <ul className="flex flex-col gap-1">
+    <details className="card group mt-5 px-5 py-4 text-sm">
+      <summary className="flex cursor-pointer list-none items-center justify-between">
+        <span className="headline text-[1.5rem]">¿Cómo se puntúa?</span>
+        <Icon name="plus" className="size-5 text-pine transition-transform group-open:rotate-45" />
+      </summary>
+      <div className="mt-4 grid gap-5 sm:grid-cols-2">
+        <ul>
           {RULES.map((r) => (
-            <li key={r.label} className="flex justify-between gap-4"><span className="text-muted">{r.label}</span><Points value={r.points} /></li>
+            <li key={r.label} className="row justify-between py-2"><span className="text-muted">{r.label}</span><Points value={r.points} className="text-[1.3rem]" /></li>
           ))}
         </ul>
         <div>
-          <p className="mb-1 text-muted">Bonus por posición</p>
-          <ul className="flex flex-col gap-1">
+          <p className="label mb-1">Bonus por posición</p>
+          <ul>
             {POSITION_POINTS.map(([upTo, pts], i) => {
               const from = i === 0 ? 1 : POSITION_POINTS[i - 1][0] + 1
               return (
-                <li key={upTo} className="flex justify-between gap-4">
+                <li key={upTo} className="row justify-between py-2">
                   <span className="text-muted">{from === upTo ? `${upTo}º` : `${from}º – ${upTo}º`}</span>
-                  <Points value={pts} />
+                  <Points value={pts} className="text-[1.3rem]" />
                 </li>
               )
             })}
           </ul>
         </div>
       </div>
-      <p className="mt-3 text-muted">
-        Tu <strong className="text-gold-500">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR) y
+      <p className="mt-4 text-muted">
+        Tu <strong className="text-pine">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR) y
         se fijan al publicarse los inscritos. Puedes cambiar el equipo cuantas veces quieras hasta la primera salida del torneo.
       </p>
     </details>
@@ -58,10 +58,11 @@ function ScoringRules() {
 }
 
 export default function DraftPage() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const tournament = useCurrentTournament()
   const { players, byId, loading: loadingPlayers } = usePlayers(tournament?.id)
   const { locked } = useLocked(tournament)
+  const club = clubColor(profile?.color, user?.uid)
 
   const [saved, setSaved] = useState(undefined) // undefined: cargando · null: sin equipo
   const [selected, setSelected] = useState([])
@@ -92,30 +93,31 @@ export default function DraftPage() {
 
   if (tournament === undefined || (tournament && (loadingPlayers || saved === undefined))) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <Skeleton className="mb-4 h-10 w-52" />
-        <Skeleton className="mb-4 h-28" />
-        <Skeleton className="h-14" count={5} />
+      <div className="mx-auto max-w-5xl px-4 pt-4">
+        <Skeleton className="mb-4 h-24 w-72" />
+        <Skeleton className="mb-4 h-44 rounded-[1.6rem]" />
+        <Skeleton className="h-16" count={5} />
       </div>
     )
   }
-  if (!tournament) return <Message>Todavía no hay torneo esta semana. Vuelve en unos días.</Message>
+  if (!tournament) {
+    return <div className="mx-auto max-w-3xl px-4 pt-6"><div className="card"><EmptyState title="Todavía no hay torneo esta semana. Vuelve en unos días." /></div></div>
+  }
 
   // Equipos cerrados: el equipo ya no se toca y se ven sus puntos en directo
   if (locked) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-6">
-        <PageHeader title="Mi equipo" />
-        <TournamentCard tournament={tournament} />
-        <section className="card mt-5 animate-fade-up p-5 [animation-delay:100ms]">
+      <div className="mx-auto max-w-3xl px-4 pt-4">
+        <TournamentCard tournament={tournament} title="Mi equipo" />
+        <section className="card mt-5 animate-fade-up px-4 pt-3 pb-1 [animation-delay:100ms]">
           {saved ? (
             <>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold">Tu equipo</h3>
+              <div className="flex items-center justify-between pb-2">
+                <span className="label">Equipos cerrados · ya cuentan los puntos</span>
                 <span className="text-xs text-muted">Coste {formatPrice(saved.cost)}</span>
               </div>
-              <TeamList playerIds={saved.playerIds} captainId={saved.captainId} playersById={byId} />
-              <Link to="/league" className="btn-secondary mt-4 w-full">Ver mis ligas →</Link>
+              <TeamList playerIds={saved.playerIds} captainId={saved.captainId} playersById={byId} clubBg={club.bg} tournamentId={tournament.id} />
+              <Link to="/league" className="btn-secondary my-3 w-full">Ver mis ligas</Link>
             </>
           ) : (
             <EmptyState title="No hiciste equipo para este torneo. ¡El próximo no se te escapa!" />
@@ -128,9 +130,8 @@ export default function DraftPage() {
 
   if (!players?.length) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-6">
-        <PageHeader title="Mi equipo" />
-        <TournamentCard tournament={tournament} />
+      <div className="mx-auto max-w-3xl px-4 pt-4">
+        <TournamentCard tournament={tournament} title="Mi equipo" />
         <div className="card mt-5"><EmptyState title="La lista de inscritos se publica unos días antes del torneo. En cuanto salga podrás hacer tu equipo." /></div>
       </div>
     )
@@ -154,7 +155,7 @@ export default function DraftPage() {
     try {
       await savePicks(tournament.id, user, selected, captainId, Object.fromEntries(selected.map((id) => [id, byId[id].price])))
       setSaved({ playerIds: selected, captainId, cost: budgetUsed })
-      setStatus({ ok: true, text: 'Equipo guardado' })
+      setStatus({ ok: true, text: '¡Equipo guardado! Puedes cambiarlo hasta la primera salida.' })
     } catch (err) {
       console.error(err)
       setStatus({ ok: false, text: err.code === 'permission-denied' ? 'No se pudo guardar: los equipos ya están cerrados o algún precio ha cambiado. Recarga la página.' : 'No se pudo guardar el equipo. Inténtalo de nuevo.' })
@@ -162,118 +163,104 @@ export default function DraftPage() {
     setSaving(false)
   }
 
-  const budgetLow = budgetLeft < 10
   const ready = selected.length === TEAM_SIZE && captainId && budgetLeft >= 0
+  const missing = TEAM_SIZE - selected.length
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <PageHeader title="Mi equipo" subtitle={`Elige ${TEAM_SIZE} jugadores con ${BUDGET}M y nombra a tu capitán`} />
-      <TournamentCard tournament={tournament} />
+    <div className="mx-auto max-w-5xl px-4 pt-4">
+      <TournamentCard tournament={tournament} title="Mi equipo" />
 
-      <section className="card mt-5 animate-fade-up px-5 py-4 [animation-delay:80ms]">
-        <div className="mb-2 flex justify-between text-sm">
-          <span className="text-muted">Presupuesto</span>
-          <span className="font-mono font-semibold">
-            <span className={budgetLow ? 'text-danger' : 'text-gold-500'}>{budgetUsed}M</span>
-            <span className="text-muted"> / {BUDGET}M</span>
-          </span>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded bg-white/8">
-          <div className={`h-full rounded transition-[width] duration-300 ${budgetLow ? 'bg-danger' : 'bg-gold-500'}`} style={{ width: `${Math.min((budgetUsed / BUDGET) * 100, 100)}%` }} />
-        </div>
-        <p className="mt-1.5 text-xs text-muted">{budgetLeft}M disponibles · {selected.length}/{TEAM_SIZE} jugadores</p>
-      </section>
-
-      <div className="mt-5 grid gap-5 md:grid-cols-5">
-        <div className="md:col-span-3">
-          <div className="mb-3 flex gap-2">
-            <label className="relative block flex-1">
-              <Icon name="search" className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
-              <input className="input-field pl-10" placeholder="Buscar jugador..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            </label>
-            <select className="input-field w-auto" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Ordenar por">
-              {Object.entries(SORTS).map(([id, s]) => <option key={id} value={id} className="bg-pine-950">{s.label}</option>)}
-            </select>
+      <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-start">
+        {/* Presupuesto y plazas del equipo */}
+        <section className="relative animate-fade-up overflow-hidden rounded-[1.6rem] bg-pine px-5 pt-5 pb-5 text-white md:sticky md:top-20">
+          <div className="halftone absolute inset-0" />
+          <div className="relative flex items-end justify-between">
+            <div>
+              <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-mint uppercase">Presupuesto</p>
+              <p className="score mt-1 text-[2.6rem]">{budgetUsed}M <span className="text-[1.4rem] text-white/55">/ {BUDGET}M</span></p>
+            </div>
+            <p className="mb-1 text-sm text-white/80">{selected.length} de {TEAM_SIZE}</p>
           </div>
-          <ul className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1">
+          <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-white/15">
+            <div className={`h-full rounded-full transition-[width] duration-300 ${budgetLeft < 0 ? 'bg-over' : 'bg-mint'}`} style={{ width: `${Math.min((budgetUsed / BUDGET) * 100, 100)}%` }} />
+          </div>
+
+          <ol className="relative mt-4 grid grid-cols-6 gap-2">
+            {Array.from({ length: TEAM_SIZE }, (_, i) => {
+              const p = byId[selected[i]]
+              if (!p) return <li key={i} className="flex aspect-square items-center justify-center rounded-full border-2 border-dashed border-white/30 text-white/55"><Icon name="plus" className="size-4" /></li>
+              const isCaptain = p.id === captainId
+              return (
+                <li key={p.id} className="relative animate-pop">
+                  <button
+                    onClick={() => { setCaptainId(p.id); setStatus(null) }}
+                    aria-pressed={isCaptain}
+                    aria-label={`Hacer capitán a ${p.name}`}
+                    title={`${p.name} · pulsa para hacerlo capitán`}
+                    className={`block aspect-square w-full overflow-hidden rounded-full ${isCaptain ? 'ring-2 ring-mint ring-offset-2 ring-offset-pine' : ''}`}
+                  >
+                    <PlayerPhoto src={p.photoURL} name={p.name} bg={isCaptain ? club.bg : '#11663a'} className="!size-full" />
+                  </button>
+                  {isCaptain && <span className="absolute -top-1 -right-1 flex h-5 items-center rounded-full bg-mint px-1.5 text-[0.65rem] font-bold text-pine-dark">C</span>}
+                </li>
+              )
+            })}
+          </ol>
+          <p className="relative mt-3 text-xs text-white/70">Toca una cara para hacerla capitán (x{CAPTAIN_MULTIPLIER})</p>
+
+          <button className="relative mt-4 flex h-14 w-full items-center justify-between rounded-full bg-white px-6 font-display text-[1.35rem] font-extrabold text-pine uppercase transition-transform active:scale-[0.98] disabled:opacity-60" disabled={!ready || !dirty || saving} onClick={handleSave}>
+            {saving ? 'Guardando...' : !dirty ? 'Equipo guardado' : saved ? 'Guardar cambios' : 'Confirmar equipo'}
+            <span className="font-sans text-sm font-medium normal-case text-muted">
+              {!dirty ? <Icon name="check" className="size-5 text-pine" /> : missing > 0 ? `Faltan ${missing}` : budgetLeft < 0 ? 'Te pasas' : `${formatPrice(budgetLeft)} libres`}
+            </span>
+          </button>
+          {status && <p role="status" className={`relative mt-3 text-sm ${status.ok ? 'text-mint' : 'text-[#ffb4ab]'}`}>{status.text}</p>}
+        </section>
+
+        {/* Mercado de jugadores */}
+        <section>
+          <div className="mb-3 flex gap-2">
+            <label className="relative flex-1">
+              <Icon name="search" className="pointer-events-none absolute top-1/2 left-4 size-4.5 -translate-y-1/2 text-muted" />
+              <input className="input-field pl-11" placeholder="Buscar jugador" aria-label="Buscar jugador" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
+            <button className="btn-secondary px-5" onClick={() => setSort(SORT_IDS[(SORT_IDS.indexOf(sort) + 1) % SORT_IDS.length])} aria-label={`Ordenar: ${SORTS[sort].label}`}>
+              {SORTS[sort].label}
+            </button>
+          </div>
+          <ul className="card px-4">
             {visible.map((player) => {
               const isSelected = selected.includes(player.id)
               const disabled = !isSelected && (selected.length >= TEAM_SIZE || budgetLeft < player.price)
               return (
-                <li key={player.id}>
+                <li key={player.id} className={`row ${disabled ? 'opacity-45' : ''}`}>
+                  <PlayerPhoto src={player.photoURL} name={player.name} bg={isSelected && player.id === captainId ? club.bg : '#11663a'} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold">{player.name}</span>
+                      {isSelected && player.id === captainId && <span className="inline-flex h-5 items-center rounded-full px-1.5 text-[0.68rem] font-bold text-white" style={{ background: club.bg }}>C</span>}
+                    </span>
+                    <span className="block text-xs text-muted">{player.country}{player.owgr ? ` · OWGR #${player.owgr}` : ''}</span>
+                  </span>
+                  <span className="score text-[1.5rem] text-pine">{formatPrice(player.price)}</span>
                   <button
                     onClick={() => toggle(player)}
                     disabled={disabled}
                     aria-pressed={isSelected}
-                    className={`list-row w-full justify-between text-left transition-all disabled:cursor-not-allowed disabled:opacity-45 ${isSelected ? 'list-row-highlight' : 'hover:not-disabled:bg-white/7'}`}
+                    aria-label={`${isSelected ? 'Quitar' : 'Añadir'} a ${player.name}`}
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-all ${isSelected ? 'bg-pine text-white' : 'border-[1.5px] border-pine text-pine hover:not-disabled:bg-pine/5 disabled:border-track disabled:text-faint'}`}
                   >
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Avatar src={player.photoURL} name={player.name} size="sm" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-cream">{player.name}</p>
-                        <p className="text-xs text-muted">{player.country}{player.owgr ? ` · OWGR #${player.owgr}` : ''}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-sm font-semibold text-gold-500">{formatPrice(player.price)}</span>
-                      {isSelected && <Icon name="check" className="size-4 text-pine-400" />}
-                    </div>
+                    <Icon name={isSelected ? 'check' : 'plus'} className="size-4.5" strokeWidth={2.6} />
                   </button>
                 </li>
               )
             })}
             {!visible.length && <li><EmptyState title="Ningún jugador coincide con la búsqueda" /></li>}
           </ul>
-        </div>
-
-        <aside className="md:col-span-2">
-          <div className="card sticky top-20 p-5">
-            <h3 className="mb-1 text-[0.95rem] font-semibold">Tu equipo ({selected.length}/{TEAM_SIZE})</h3>
-            <p className="mb-4 text-xs text-muted">Pulsa la estrella para elegir capitán (x{CAPTAIN_MULTIPLIER})</p>
-            <ol className="mb-4 flex flex-col gap-2">
-              {Array.from({ length: TEAM_SIZE }, (_, i) => {
-                const p = byId[selected[i]]
-                const isCaptain = p && p.id === captainId
-                return (
-                  <li key={i} className={`flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 ${p ? 'border-gold-500/20 bg-gold-500/8' : 'border-white/6 bg-white/3'}`}>
-                    <span className="min-w-4 font-mono text-xs text-muted">{i + 1}</span>
-                    {p ? (
-                      <>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-cream">{p.name}</p>
-                          <p className="text-xs text-muted">{formatPrice(p.price)}</p>
-                        </div>
-                        <button
-                          onClick={() => { setCaptainId(p.id); setStatus(null) }}
-                          className={`rounded px-1.5 py-0.5 text-sm ${isCaptain ? 'bg-gold-500 text-pine-950' : 'text-muted hover:text-gold-500'}`}
-                          aria-pressed={isCaptain}
-                          aria-label={`Hacer capitán a ${p.name}`}
-                          title="Capitán"
-                        >
-                          ★
-                        </button>
-                        <button onClick={() => toggle(p)} className="p-1 text-muted hover:text-danger" aria-label={`Quitar a ${p.name}`}>
-                          <Icon name="close" className="size-4" />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-sm text-muted">— Vacío —</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ol>
-            <button className="btn-primary w-full" disabled={!ready || !dirty || saving} onClick={handleSave}>
-              {saving ? 'Guardando...' : !dirty ? '✓ Equipo guardado' : saved ? 'Guardar cambios' : 'Confirmar equipo'}
-            </button>
-            {status && <p role="status" className={`mt-3 text-sm ${status.ok ? 'text-pine-400' : 'text-danger'}`}>{status.text}</p>}
-            {saved && dirty && !status && <p className="mt-3 text-xs text-gold-300">Tienes cambios sin guardar</p>}
-          </div>
-        </aside>
+        </section>
       </div>
 
       <ScoringRules />
     </div>
   )
 }
-

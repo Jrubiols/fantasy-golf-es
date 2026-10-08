@@ -21,21 +21,29 @@ service cloud.firestore {
     function isOptionalText(value, max) { return value == null || (value is string && value.size() <= max); }
 
     match /users/{uid} {
+      // Color y nombre del club (opcionales). Los colores son los de src/lib/clubs.js
+      function validClub(d) {
+        return (!('color' in d) || d.color in ['pino', 'granate', 'marino', 'laguna', 'teja', 'violeta', 'azul', 'carbon'])
+          && (!('clubName' in d) || isOptionalText(d.clubName, 30));
+      }
+
       allow read: if signedIn();
       allow create: if isUser(uid)
-        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'isAdmin', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'isAdmin', 'createdAt', 'color', 'clubName'])
         && isText(request.resource.data.displayName, 1, 60)
         && isOptionalText(request.resource.data.photoURL, 500)
+        && validClub(request.resource.data)
         && request.resource.data.isAdmin == false
         && request.resource.data.createdAt == request.time;
       // isAdmin solo se cambia desde la consola de Firebase. Los perfiles de la versión antigua
       // guardaban email y uid: se permite borrarlos (nunca añadirlos)
       allow update: if isUser(uid)
-        && onlyChanges(['displayName', 'photoURL', 'email', 'uid'])
+        && onlyChanges(['displayName', 'photoURL', 'color', 'clubName', 'email', 'uid'])
         && !('email' in request.resource.data)
         && !('uid' in request.resource.data)
         && isText(request.resource.data.displayName, 1, 60)
-        && isOptionalText(request.resource.data.photoURL, 500);
+        && isOptionalText(request.resource.data.photoURL, 500)
+        && validClub(request.resource.data);
     }
 
     match /config/{doc} {

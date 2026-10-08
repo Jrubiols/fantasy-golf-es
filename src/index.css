@@ -1,31 +1,46 @@
 @import 'tailwindcss';
 
-/* Paleta y tipografías: generan utilidades como bg-pine-900, text-gold-500, font-display */
+/* Paleta y tipografías: generan utilidades como bg-pine, text-ink, font-display */
 @theme {
-  --color-pine-950: #0d2818;
-  --color-pine-900: #1a4a2e;
-  --color-pine-600: #2d7a4f;
-  --color-pine-400: #4caf7d;
-  --color-pine-200: #a8f0c6;
-  --color-gold-500: #c9a84c;
-  --color-gold-300: #e8c97a;
-  --color-cream: #f5f0e8;
-  --color-cream-dark: #e8e0d0;
-  --color-muted: #8fa898;
-  --color-danger: #e57373;
-  --color-silver: #c0c0c0;
-  --color-bronze: #cd7f32;
+  /* Superficies */
+  --color-bg: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-track: #e7e6e2;
+  --color-line: #ecebe6;
 
-  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Playfair Display', ui-serif, Georgia, serif;
-  --font-mono: 'DM Mono', ui-monospace, monospace;
+  /* Texto */
+  --color-ink: #1e211d;
+  --color-muted: #6b6f68;
+  --color-faint: #8a8f86;
 
-  --animate-fade-up: fade-up 0.5s ease both;
+  /* Marca: verde de club y menta de acento */
+  --color-pine: #0a4a24;
+  --color-pine-dark: #06301a;
+  --color-pine-mid: #0f5c2f;
+  --color-pine-light: #11663a;
+  --color-mint: #8efc92;
+  --color-navy: #0c2340;
+
+  /* Estados */
+  --color-live: #e0310e;
+  --color-live-soft: #fdebe8;
+  --color-live-ink: #b42318;
+  --color-under: #0a7a34;
+  --color-over: #c8372d;
+  --color-gold: #c9a84c;
+
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', ui-sans-serif, sans-serif;
+
+  --radius-card: 1.5rem;
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-fade-in: fade-in 0.4s ease both;
   --animate-shimmer: shimmer 1.5s infinite;
+  --animate-pop: pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 
   @keyframes fade-up {
-    from { opacity: 0; transform: translateY(20px); }
+    from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
   }
   @keyframes fade-in {
@@ -36,78 +51,94 @@
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
   }
+  @keyframes pop {
+    from { transform: scale(0.85); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
 }
 
 @layer base {
   body {
-    @apply min-h-dvh overflow-x-hidden bg-pine-950 font-sans text-cream antialiased;
+    @apply min-h-dvh overflow-x-hidden bg-bg font-sans text-ink antialiased;
   }
-
-  /* Textura sutil de césped */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(255 255 255 / 0.008) 2px, rgb(255 255 255 / 0.008) 4px),
-      repeating-linear-gradient(90deg, transparent, transparent 3px, rgb(255 255 255 / 0.004) 3px, rgb(255 255 255 / 0.004) 6px);
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  #root { position: relative; z-index: 1; }
 
   button:not(:disabled) { cursor: pointer; }
 
-  :focus-visible { @apply outline-2 outline-offset-2 outline-gold-500; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-pine; }
 
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--color-pine-950); }
-  ::-webkit-scrollbar-thumb { background: var(--color-pine-900); border-radius: 3px; }
+  ::selection { @apply bg-mint text-pine-dark; }
+}
+
+/* Titular de la casa: condensado, negrita y en mayúsculas */
+@utility headline {
+  @apply font-display font-black uppercase leading-[0.9] text-pine;
+}
+
+/* Etiqueta pequeña espaciada: POS, PUNTOS, RONDA 1 */
+@utility label {
+  @apply text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted;
+}
+
+/* Números grandes de marcador */
+@utility score {
+  @apply font-display font-black leading-none tabular-nums;
+}
+
+/* Trama de puntos de la casa, que se desvanece desde una esquina */
+@utility halftone {
+  background-image: radial-gradient(rgb(255 255 255 / 0.15) 1.6px, transparent 1.9px);
+  background-size: 10px 10px;
+  mask-image: radial-gradient(circle at 92% 8%, #000 0%, transparent 58%);
 }
 
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-7 py-3 text-[0.95rem] font-medium tracking-wide transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex h-12 items-center justify-center gap-2 rounded-full px-6 font-display text-lg font-extrabold uppercase tracking-wide transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-gold-500/20 bg-pine-900/40 backdrop-blur-md;
+    @apply rounded-[var(--radius-card)] bg-surface shadow-[0_6px_24px_rgb(10_30_15/0.06)];
   }
 
   .btn-primary {
-    @apply btn bg-linear-135 from-gold-500 to-gold-300 font-semibold text-pine-950 hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_8px_24px_rgb(201_168_76/0.3)];
+    @apply btn bg-pine text-white hover:not-disabled:bg-pine-dark active:not-disabled:scale-[0.98];
   }
   .btn-secondary {
-    @apply btn border border-cream/25 text-cream hover:not-disabled:border-cream/50 hover:not-disabled:bg-cream/5;
+    @apply btn bg-track text-pine hover:not-disabled:bg-[#dcdbd5];
+  }
+  .btn-ghost {
+    @apply btn border border-track bg-surface text-pine hover:not-disabled:border-pine/30;
   }
   .btn-danger {
-    @apply btn border border-danger/30 px-4 py-2 text-sm text-danger hover:not-disabled:bg-danger/10;
+    @apply btn h-10 border border-over/30 bg-surface px-5 text-base text-over hover:not-disabled:bg-over/5;
   }
-  .btn-sm { @apply px-4 py-2 text-sm; }
+  .btn-sm { @apply h-9 px-4 text-base; }
+  .btn-lg { @apply h-15 px-7 text-[1.4rem]; }
 
   .input-field {
-    @apply w-full rounded-lg border border-cream/20 bg-white/7 px-4 py-3 text-[0.95rem] text-cream outline-none transition-colors placeholder:text-muted focus:border-gold-500;
+    @apply h-12 w-full rounded-full border border-transparent bg-surface px-5 text-[0.95rem] text-ink outline-none transition-colors placeholder:text-faint focus:border-pine/40;
   }
 
   .skeleton {
-    @apply animate-shimmer rounded-md bg-size-[200%_100%];
-    background-image: linear-gradient(90deg, rgb(255 255 255 / 0.05) 25%, rgb(255 255 255 / 0.1) 50%, rgb(255 255 255 / 0.05) 75%);
+    @apply animate-shimmer rounded-2xl bg-size-[200%_100%];
+    background-image: linear-gradient(90deg, #ecebe6 25%, #f4f3ef 50%, #ecebe6 75%);
   }
 
-  /* Fila de lista (jugadores, clasificaciones) */
-  .list-row {
-    @apply flex items-center gap-3 rounded-lg border border-white/6 bg-white/4 px-3 py-2.5;
+  /* Fila dentro de una tarjeta blanca (jugadores, clasificaciones) */
+  .row {
+    @apply flex items-center gap-3 border-t border-line py-3 first:border-t-0;
   }
-  .list-row-highlight {
-    @apply border-gold-500/20 bg-gold-500/8;
+
+  /* Caja de cristal sobre las tarjetas de color */
+  .glass {
+    @apply rounded-2xl border border-white/12 bg-black/30 backdrop-blur-md;
   }
 }
 
 /* Espacio para la barra inferior del móvil y la zona segura del iPhone */
 @utility pb-safe-nav {
-  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
   @media (width >= 48rem) {
-    padding-bottom: 2rem;
+    padding-bottom: 3rem;
   }
 }

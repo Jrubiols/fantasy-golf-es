@@ -48,3 +48,10 @@ export function formatCountdown(ms) {
   if (hours) return `${hours} h ${minutes % 60} min`
   return `${minutes} min`
 }
+
+// Fotos de ESPN al tamaño que se pintan (la original pesa unos 250 KB): ancho en px, proporción 350x254
+export function sizedPhoto(url, width) {
+  if (!url?.startsWith('https://a.espncdn.com/i/')) return url
+  const path = url.replace('https://a.espncdn.com', '')
+  return `https://a.espncdn.com/combiner/i?img=${path}&w=${width}&h=${Math.round((width * 254) / 350)}`
+}

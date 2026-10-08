@@ -1,11 +1,16 @@
-const SIZES = { sm: 'size-7 text-xs', md: 'size-8 text-sm', lg: 'size-10 text-base', xl: 'size-13 text-lg' }
+import { clubColor } from '../../lib/clubs'
 
-export default function Avatar({ src, name, size = 'md', className = '' }) {
-  const base = `${SIZES[size]} shrink-0 rounded-full object-cover ${className}`
-  if (src) return <img src={src} alt={name ?? ''} referrerPolicy="no-referrer" loading="lazy" className={base} />
+const SIZES = { sm: 'size-8 text-base', md: 'size-10 text-xl', lg: 'size-12 text-2xl', xl: 'size-16 text-3xl' }
+
+/** Avatar de un jugador de la liga: su inicial sobre su color de club. */
+export default function Avatar({ name, color, uid, size = 'md', className = '' }) {
   return (
-    <div className={`${base} flex items-center justify-center bg-pine-900 font-semibold text-muted`} aria-hidden="true">
+    <span
+      className={`${SIZES[size]} inline-flex shrink-0 items-center justify-center rounded-full font-display font-extrabold text-white ${className}`}
+      style={{ background: clubColor(color, uid).bg }}
+      aria-hidden="true"
+    >
       {name?.[0]?.toUpperCase() ?? '?'}
-    </div>
+    </span>
   )
 }

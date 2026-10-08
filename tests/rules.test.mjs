@@ -61,6 +61,12 @@ describe('perfiles', () => {
     await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { isAdmin: true }))
     await assertSucceeds(updateDoc(doc(as('ana'), 'users/ana'), { displayName: 'Ana G.' }))
   })
+  test('color y nombre de club: solo colores de la lista', async () => {
+    await setDoc(doc(as('ana'), 'users/ana'), profile)
+    await assertSucceeds(updateDoc(doc(as('ana'), 'users/ana'), { color: 'granate', clubName: 'Birdie Hunters' }))
+    await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { color: 'fucsia' }))
+    await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { clubName: 'x'.repeat(31) }))
+  })
   test('los perfiles antiguos pueden borrar el email, pero nadie lo añade', async () => {
     await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users/ana'), { ...profile, uid: 'ana', email: 'ana@example.com' }))
     await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { email: 'otro@example.com' }))

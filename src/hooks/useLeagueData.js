@@ -58,7 +58,15 @@ export function useGroupStandings(memberIds, source, profiles) {
     return withRanks(memberIds.map((uid) => {
       const row = byUid.get(uid)
       const profile = profiles[uid] ?? {}
-      return { displayName: profile.displayName ?? 'Jugador', photoURL: profile.photoURL ?? null, ...row, uid, points: row?.points ?? null }
+      // El perfil manda: si alguien cambia su color o el nombre de su club, se ve al momento
+      return {
+        ...row,
+        uid,
+        displayName: profile.displayName ?? row?.displayName ?? 'Jugador',
+        color: profile.color ?? row?.color ?? null,
+        clubName: profile.clubName ?? row?.clubName ?? null,
+        points: row?.points ?? null,
+      }
     }))
   }, [memberIds, source, profiles])
 }

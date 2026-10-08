@@ -119,6 +119,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
   // 5. Desde la primera salida, los equipos se publican y puntúan
   if (locked) {
     const picksSnap = await db.collection('picks').where('tournamentId', '==', tournament.id).get()
+    // Color y nombre de club de cada jugador, para pintar las clasificaciones sin más lecturas
+    const userRefs = picksSnap.docs.map((d) => db.collection('users').doc(d.data().uid))
+    const clubs = new Map((userRefs.length ? await db.getAll(...userRefs) : []).map((u) => [u.id, u.data() ?? {}]))
     const teams = picksSnap.docs.map((d) => {
       const p = d.data()
       return { id: d.id, ...p, points: teamPoints(p.playerIds, p.captainId, pointsById) }
@@ -130,8 +133,10 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         tournamentId: tournament.id,
         tournamentName: tournament.name,
         season: tournament.season,
-        displayName: t.displayName,
+        displayName: clubs.get(t.uid)?.displayName ?? t.displayName,
         photoURL: t.photoURL ?? null,
+        color: clubs.get(t.uid)?.color ?? null,
+        clubName: clubs.get(t.uid)?.clubName ?? null,
         playerIds: t.playerIds,
         captainId: t.captainId,
         cost: t.cost,
@@ -160,7 +165,7 @@ export async function updateSeasonStandings(db, season, now = new Date()) {
   const byUser = new Map()
   for (const doc of entriesSnap.docs) {
     const e = doc.data()
-    const s = byUser.get(e.uid) ?? { uid: e.uid, displayName: e.displayName, photoURL: e.photoURL ?? null, points: 0, tournaments: 0, wins: 0, best: null }
+    const s = byUser.get(e.uid) ?? { uid: e.uid, displayName: e.displayName, photoURL: e.photoURL ?? null, color: e.color ?? null, clubName: e.clubName ?? null, points: 0, tournaments: 0, wins: 0, best: null }
     s.points = Math.round((s.points + e.points) * 10) / 10
     s.tournaments++
     if (e.rank === 1) s.wins++
