@@ -1,8 +1,9 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Navbar from './Navbar'
 import BottomNav from './BottomNav'
 import Skeleton from '../ui/Skeleton'
+import { listenForeground } from '../../services/notifications'
 
 function PageFallback() {
   return (
@@ -14,6 +15,13 @@ function PageFallback() {
 }
 
 export default function AppLayout() {
+  // Con la app abierta, los avisos también se muestran
+  useEffect(() => {
+    let unsubscribe = () => {}
+    listenForeground().then((fn) => { unsubscribe = fn })
+    return () => unsubscribe()
+  }, [])
+
   return (
     <>
       <Navbar />

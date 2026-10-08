@@ -7,6 +7,7 @@ import { CLUB_COLORS, clubColor } from '../lib/clubs'
 import PageHeader from '../components/ui/PageHeader'
 import ClubCard from '../components/ui/ClubCard'
 import Icon from '../components/ui/Icon'
+import PushCard from '../components/ui/PushCard'
 
 export default function ProfilePage() {
   const { user, profile, logout } = useAuth()
@@ -69,6 +70,8 @@ export default function ProfilePage() {
         <button type="submit" className="btn-primary mt-6 w-full" disabled={!dirty || saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
         {status && <p role="status" className={`mt-3 text-sm ${status.ok ? 'text-under' : 'text-over'}`}>{status.text}</p>}
       </form>
+
+      <div className="mt-5 animate-fade-up [animation-delay:140ms]"><PushCard /></div>
 
       <div className="mt-8 flex justify-center">
         <button className="btn-ghost" onClick={handleLogout}><Icon name="logout" className="size-4" />Cerrar sesión</button>

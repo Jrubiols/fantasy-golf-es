@@ -126,3 +126,67 @@ describe('torneo terminado', () => {
     assert.equal(again.standings, 0)
   })
 })
+
+describe('avisos al móvil', () => {
+  const id = live.events[0].id
+  const firstTee = new Date('2026-10-07T23:45:00Z')
+
+  // Mensajero falso: apunta lo enviado y da por caducado el token "caducado"
+  function fakeMessenger() {
+    const sent = []
+    return {
+      sent,
+      async sendEachForMulticast(msg) {
+        sent.push(msg)
+        const responses = msg.tokens.map((t) => (t === 'caducado' ? { success: false, error: { code: 'messaging/registration-token-not-registered' } } : { success: true }))
+        return { successCount: responses.filter((r) => r.success).length, responses }
+      },
+    }
+  }
+
+  before(async () => {
+    await clear()
+    await db.recursiveDelete(db.collection('users'))
+    for (const [uid, token] of [['ana', 'tok-ana'], ['bea', 'tok-bea'], ['carla', 'caducado']]) {
+      await db.doc(`users/${uid}/tokens/${token}`).set({ createdAt: new Date() })
+    }
+  })
+
+  test('al publicarse los precios se avisa a todos, una sola vez', async () => {
+    const messenger = fakeMessenger()
+    const opts = { sources: sources(live), log: quiet, messenger }
+    await sync(db, { ...opts, now: new Date(firstTee - 2 * 86_400_000) })
+    assert.equal(messenger.sent.length, 3)
+    assert.match(messenger.sent[0].notification.title, /Ya puedes hacer tu equipo/)
+    assert.equal(messenger.sent[0].webpush.fcmOptions.link.endsWith('/draft'), true)
+    // El token caducado se borra
+    assert.equal((await db.doc('users/carla/tokens/caducado').get()).exists, false)
+
+    await sync(db, { ...opts, now: new Date(firstTee - 2 * 86_400_000 + 900_000) })
+    assert.equal(messenger.sent.length, 3)
+  })
+
+  test('3 horas antes, solo a quien no tiene equipo', async () => {
+    await makePicks(id, 'ana', 0)
+    const messenger = fakeMessenger()
+    await sync(db, { sources: sources(live), log: quiet, messenger, now: new Date(firstTee - 2 * 3_600_000) })
+    assert.deepEqual(messenger.sent.map((m) => m.tokens), [['tok-bea']])
+    assert.match(messenger.sent[0].notification.title, /Últimas horas/)
+
+    await sync(db, { sources: sources(live), log: quiet, messenger, now: new Date(firstTee - 3_600_000) })
+    assert.equal(messenger.sent.length, 1)
+  })
+
+  test('al terminar, cada uno recibe su resultado', async () => {
+    const finalId = final.events[0].id
+    await sync(db, { sources: sources(final), log: quiet, now: new Date('2026-09-30T00:00:00Z') })
+    await makePicks(finalId, 'ana', 0)
+    await makePicks(finalId, 'bea', 20)
+    const messenger = fakeMessenger()
+    await sync(db, { sources: sources(final), log: quiet, messenger, now: new Date('2026-10-05T00:00:00Z') })
+    const titles = messenger.sent.map((m) => m.notification.title)
+    assert.equal(titles.length, 2)
+    assert.ok(titles.some((t) => /Has ganado/.test(t)))
+    assert.ok(titles.some((t) => /terminaste 2º de 2/.test(t)))
+  })
+})

@@ -13,6 +13,7 @@ import Icon from '../components/ui/Icon'
 import Ordinal from '../components/ui/Ordinal'
 import TeamList from '../components/ui/TeamList'
 import TournamentCard from '../components/ui/TournamentCard'
+import PushCard from '../components/ui/PushCard'
 
 function Stat({ label, children }) {
   return (
@@ -128,6 +129,8 @@ export default function DashboardPage() {
       ) : (
         <div className="mb-5"><TournamentCard tournament={tournament} /></div>
       )}
+
+      <PushCard compact />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div>{tournament && <MyTeam tournament={tournament} user={user} profile={profile} entry={entry} />}</div>

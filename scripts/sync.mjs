@@ -3,6 +3,7 @@
 // (secreto de GitHub). Con --emulator (o FIRESTORE_EMULATOR_HOST) se usa el emulador local y no hacen falta.
 import { cert, initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getMessaging } from 'firebase-admin/messaging'
 import { sync } from './engine.mjs'
 
 if (process.argv.includes('--emulator')) process.env.FIRESTORE_EMULATOR_HOST ??= '127.0.0.1:8080'
@@ -15,11 +16,13 @@ function credentials() {
   return { credential: cert(account), projectId: account.project_id }
 }
 
-const db = getFirestore(initializeApp(credentials()))
+const app = initializeApp(credentials())
+const db = getFirestore(app)
 db.settings({ ignoreUndefinedProperties: true })
 
 try {
-  await sync(db)
+  // En el emulador no hay avisos: Cloud Messaging no se emula
+  await sync(db, { messenger: process.env.FIRESTORE_EMULATOR_HOST ? null : getMessaging(app) })
 } catch (err) {
   console.error('La sincronización ha fallado:', err)
   process.exitCode = 1

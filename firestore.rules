@@ -44,6 +44,16 @@ service cloud.firestore {
         && isText(request.resource.data.displayName, 1, 60)
         && isOptionalText(request.resource.data.photoURL, 500)
         && validClub(request.resource.data);
+
+      // Dispositivos con avisos activados. Solo el motor los lee; cada uno gestiona los suyos
+      match /tokens/{token} {
+        allow create, update: if isUser(uid)
+          && token.size() < 400
+          && request.resource.data.keys().hasOnly(['createdAt', 'userAgent'])
+          && request.resource.data.createdAt == request.time
+          && isOptionalText(request.resource.data.userAgent, 200);
+        allow delete: if isUser(uid);
+      }
     }
 
     match /config/{doc} {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
 import {
-  arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
+  arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore'
 
 const TID = 't1'
@@ -72,6 +72,14 @@ describe('perfiles', () => {
     await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { email: 'otro@example.com' }))
     await assertSucceeds(updateDoc(doc(as('ana'), 'users/ana'), { email: deleteField(), uid: deleteField() }))
     await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { email: 'ana@example.com' }))
+  })
+  test('avisos: cada uno guarda y borra sus dispositivos, nadie los lee', async () => {
+    const token = (uid) => doc(as(uid), 'users/ana/tokens/tok123')
+    await assertSucceeds(setDoc(token('ana'), { createdAt: serverTimestamp(), userAgent: 'test' }))
+    await assertFails(setDoc(token('bea'), { createdAt: serverTimestamp(), userAgent: 'test' }))
+    await assertFails(getDoc(token('ana')))
+    await assertFails(setDoc(token('ana'), { createdAt: serverTimestamp(), spam: true }))
+    await assertSucceeds(deleteDoc(token('ana')))
   })
   test('sin sesión no se lee nada', () => assertFails(getDoc(doc(anon(), 'tournaments', TID))))
 })

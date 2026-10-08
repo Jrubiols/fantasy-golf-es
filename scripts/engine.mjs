@@ -5,6 +5,7 @@ import { Timestamp } from 'firebase-admin/firestore'
 import { fetchLeaderboard, fetchScoreboard, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
 import { playerPoints, teamPoints } from '../src/lib/scoring.js'
+import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
 
 export const defaultSources = {
   leaderboard: (eventId) => fetchLeaderboard(eventId),
@@ -48,8 +49,9 @@ export function rankBy(items, score) {
   })
 }
 
-export async function sync(db, { sources = defaultSources, now = new Date(), log = console.log } = {}) {
-  const summary = { tournament: null, status: null, players: 0, priced: 0, entries: 0, standings: 0 }
+// `messenger` envía los avisos al móvil (getMessaging() de firebase-admin); sin él no se avisa a nadie
+export async function sync(db, { sources = defaultSources, now = new Date(), log = console.log, messenger = null } = {}) {
+  const summary = { tournament: null, status: null, players: 0, priced: 0, entries: 0, standings: 0, notified: 0 }
 
   // 1. Torneo de la semana según ESPN (sin evento, el leaderboard devuelve el actual o el próximo)
   const leaderboard = await sources.leaderboard()
@@ -116,6 +118,27 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
   await tournamentRef.set({ ...tournamentData, holePars, firstTeeTime: Timestamp.fromDate(firstTeeTime), updatedAt: Timestamp.fromDate(now) }, { merge: true })
   await db.doc('config/current').set({ tournamentId: tournament.id, updatedAt: Timestamp.fromDate(now) }, { merge: true })
 
+  // Avisos antes del cierre: al publicarse los precios y 3 horas antes (solo a quien no tiene equipo).
+  // Cada aviso se envía una vez: queda apuntado en tournaments/{id}.notified
+  const notified = { ...(storedTournament?.notified ?? {}) }
+  const sentBefore = JSON.stringify(notified)
+  if (!locked && players.length && messenger) {
+    const lastHours = now.getTime() >= firstTeeTime.getTime() - DEADLINE_WARNING_MS
+    if (lastHours && !notified.deadline) {
+      const picksSnap = await db.collection('picks').where('tournamentId', '==', tournament.id).get()
+      summary.notified += await notify(db, messenger, {
+        exclude: new Set(picksSnap.docs.map((d) => d.data().uid)),
+        messages: () => ({ title: 'Últimas horas para hacer tu equipo', body: `${tournament.name} se cierra el ${formatMadrid(firstTeeTime)}. Elige a tus 6 golfistas.`, path: '/draft' }),
+      })
+      notified.deadline = notified.open = true
+    } else if (!lastHours && !notified.open) {
+      summary.notified += await notify(db, messenger, {
+        messages: () => ({ title: `Ya puedes hacer tu equipo: ${tournament.name}`, body: `Los precios están listos. Se cierra el ${formatMadrid(firstTeeTime)}.`, path: '/draft' }),
+      })
+      notified.open = true
+    }
+  }
+
   // 5. Desde la primera salida, los equipos se publican y puntúan
   if (locked) {
     const picksSnap = await db.collection('picks').where('tournamentId', '==', tournament.id).get()
@@ -152,11 +175,26 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     // 6. Al terminar: clasificación de la temporada, sumando todos los torneos ya cerrados
     if (tournament.status === 'final') {
       summary.standings = await updateSeasonStandings(db, tournament.season, now)
+      // Aviso con el resultado de cada uno
+      if (messenger && !notified.results && entryWrites.length) {
+        const byUid = new Map(entryWrites.map(({ data }) => [data.uid, data]))
+        summary.notified += await notify(db, messenger, {
+          uids: [...byUid.keys()],
+          messages: (uid) => {
+            const e = byUid.get(uid)
+            const title = e.rank === 1 ? `¡Has ganado el ${tournament.name}!` : `${tournament.name}: terminaste ${e.rank}º de ${e.teamCount}`
+            return { title, body: `${String(e.points).replace('.', ',')} puntos. Mira cómo queda tu liga.`, path: '/league' }
+          },
+        })
+        notified.results = true
+      }
       await tournamentRef.set({ finalized: true }, { merge: true })
     }
   }
 
-  log(`${tournament.name} (${tournament.status}): ${summary.players} jugadores actualizados, ${summary.priced} con precio nuevo, ${summary.entries} equipos, ${summary.standings} en la temporada`)
+  if (JSON.stringify(notified) !== sentBefore) await tournamentRef.set({ notified }, { merge: true })
+
+  log(`${tournament.name} (${tournament.status}): ${summary.players} jugadores actualizados, ${summary.priced} con precio nuevo, ${summary.entries} equipos, ${summary.standings} en la temporada, ${summary.notified} avisos`)
   return summary
 }
 
