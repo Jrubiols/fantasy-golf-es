@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
 import { useEntries, useGroupStandings, useProfiles, useSeasonStandings } from '../hooks/useLeagueData'
-import { createLeague, deleteLeague, joinLeague, leaveLeague, renameLeague, subscribeLeague, subscribeMyLeagues } from '../services/firestoreService'
+import { backfillInviteName, createLeague, deleteLeague, inviteLink, joinLeague, leaveLeague, renameLeague, subscribeLeague, subscribeMyLeagues } from '../services/firestoreService'
 import { clubColor } from '../lib/clubs'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
@@ -122,6 +122,11 @@ function LeagueDetail({ leagueId }) {
 
   useEffect(() => subscribeLeague(leagueId, setLeague, () => setLeague(null)), [leagueId])
 
+  const ownsLeague = league?.ownerUid === user.uid
+  useEffect(() => {
+    if (ownsLeague) backfillInviteName(league).catch(() => {})
+  }, [ownsLeague, league])
+
   const memberIds = useMemo(() => league?.memberIds ?? [], [league])
   const profiles = useProfiles(memberIds)
 
@@ -145,11 +150,12 @@ function LeagueDetail({ leagueId }) {
   const isOwner = league.ownerUid === user.uid
 
   async function copyInvite() {
-    const text = `¡Únete a mi liga "${league.name}" en Fantasy Golf ES! Código: ${league.code} — ${window.location.origin}/league`
+    const url = inviteLink(league.code)
+    const text = `¡Únete a mi liga "${league.name}" en Fantasy Golf ES! Entra aquí:`
     try {
-      if (navigator.share) await navigator.share({ title: 'Fantasy Golf ES', text })
+      if (navigator.share) await navigator.share({ title: 'Fantasy Golf ES', text, url })
       else {
-        await navigator.clipboard.writeText(text)
+        await navigator.clipboard.writeText(`${text} ${url}`)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }
@@ -158,7 +164,7 @@ function LeagueDetail({ leagueId }) {
 
   async function handleRename() {
     const name = window.prompt('Nuevo nombre de la liga', league.name)?.trim()
-    if (name && name.length >= 3 && name !== league.name) await renameLeague(league.id, name.slice(0, 40))
+    if (name && name.length >= 3 && name !== league.name) await renameLeague(league, name.slice(0, 40))
   }
 
   async function handleLeave() {

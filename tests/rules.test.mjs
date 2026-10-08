@@ -135,7 +135,7 @@ describe('ligas', () => {
     const db = as(uid)
     const batch = writeBatch(db)
     batch.set(doc(db, 'leagues', lid), { name: 'Amigos', code, ownerUid: uid, memberIds: [uid], createdAt: serverTimestamp() })
-    batch.set(doc(db, 'leagueCodes', code), { leagueId: lid })
+    batch.set(doc(db, 'leagueCodes', code), { leagueId: lid, name: 'Amigos' })
     return batch.commit()
   }
   const join = (uid, lid = 'L1') => updateDoc(doc(as(uid), 'leagues', lid), { memberIds: arrayUnion(uid) })
@@ -191,6 +191,27 @@ describe('ligas', () => {
     }
     await assertFails(remove('bea'))
     await assertSucceeds(remove('ana'))
+  })
+  test('el código no puede llevar un nombre distinto al de la liga', async () => {
+    const db = as('ana')
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'leagues', 'L1'), { name: 'Amigos', code: 'ABC123', ownerUid: 'ana', memberIds: ['ana'], createdAt: serverTimestamp() })
+    batch.set(doc(db, 'leagueCodes', 'ABC123'), { leagueId: 'L1', name: 'Otra cosa' })
+    await assertFails(batch.commit())
+  })
+  test('renombrar la liga renombra su invitación', async () => {
+    await createLeague('ana')
+    await join('bea')
+    const rename = (uid, name) => {
+      const db = as(uid)
+      const batch = writeBatch(db)
+      batch.update(doc(db, 'leagues', 'L1'), { name })
+      batch.update(doc(db, 'leagueCodes', 'ABC123'), { name })
+      return batch.commit()
+    }
+    await assertFails(rename('bea', 'Mía'))
+    await assertSucceeds(rename('ana', 'Los de siempre'))
+    await assertFails(updateDoc(doc(as('ana'), 'leagueCodes', 'ABC123'), { name: 'Sin la liga' }))
   })
   test('solo el creador renombra', async () => {
     await createLeague('ana')

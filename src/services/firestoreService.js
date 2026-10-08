@@ -80,7 +80,7 @@ export async function createLeague(uid, name) {
     const leagueRef = doc(collection(db, 'leagues'))
     const batch = writeBatch(db)
     batch.set(leagueRef, { name, code, ownerUid: uid, memberIds: [uid], createdAt: serverTimestamp() })
-    batch.set(doc(db, 'leagueCodes', code), { leagueId: leagueRef.id })
+    batch.set(doc(db, 'leagueCodes', code), { leagueId: leagueRef.id, name })
     try {
       await batch.commit()
       return leagueRef.id
@@ -90,11 +90,24 @@ export async function createLeague(uid, name) {
   }
 }
 
+/** Liga a la que lleva un código de invitación: { leagueId, name } o null. */
+export async function getLeagueByCode(rawCode) {
+  return toData(await getDoc(doc(db, 'leagueCodes', rawCode.trim().toUpperCase())))
+}
+
+/** Las ligas anteriores al enlace de invitación no guardaban su nombre junto al código: se completa. */
+export async function backfillInviteName(league) {
+  const invite = await getLeagueByCode(league.code)
+  if (invite && invite.name !== league.name) await updateDoc(doc(db, 'leagueCodes', league.code), { name: league.name })
+}
+
+/** Enlace de invitación: abre la app y une a la liga con un toque. */
+export const inviteLink = (code) => `${window.location.origin}/unirse/${code}`
+
 export async function joinLeague(uid, rawCode) {
-  const code = rawCode.trim().toUpperCase()
-  const codeSnap = await getDoc(doc(db, 'leagueCodes', code))
-  if (!codeSnap.exists()) throw new Error('No existe ninguna liga con ese código')
-  const { leagueId } = codeSnap.data()
+  const invite = await getLeagueByCode(rawCode)
+  if (!invite) throw new Error('No existe ninguna liga con ese código')
+  const { leagueId } = invite
   try {
     await updateDoc(doc(db, 'leagues', leagueId), { memberIds: arrayUnion(uid) })
   } catch (err) {
@@ -109,8 +122,11 @@ export function leaveLeague(uid, leagueId) {
   return updateDoc(doc(db, 'leagues', leagueId), { memberIds: arrayRemove(uid) })
 }
 
-export function renameLeague(leagueId, name) {
-  return updateDoc(doc(db, 'leagues', leagueId), { name })
+export function renameLeague(league, name) {
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'leagues', league.id), { name })
+  batch.update(doc(db, 'leagueCodes', league.code), { name })
+  return batch.commit()
 }
 
 /** Borra la liga y su código (solo el creador). */

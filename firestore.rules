@@ -137,13 +137,22 @@ service cloud.firestore {
     }
 
     // Código de invitación → liga. Se puede consultar un código concreto, pero no listarlos.
+    // Guarda también el nombre de la liga, para que el enlace de invitación muestre a qué liga te unes.
     match /leagueCodes/{code} {
+      function leagueAfter() { return getAfter(/databases/$(database)/documents/leagues/$(request.resource.data.leagueId)).data; }
+
       allow get: if signedIn();
       allow create: if signedIn()
         && code.matches('^[A-Z0-9]{6}$')
-        && request.resource.data.keys().hasOnly(['leagueId'])
-        && getAfter(/databases/$(database)/documents/leagues/$(request.resource.data.leagueId)).data.ownerUid == request.auth.uid
-        && getAfter(/databases/$(database)/documents/leagues/$(request.resource.data.leagueId)).data.code == code;
+        && request.resource.data.keys().hasOnly(['leagueId', 'name'])
+        && leagueAfter().ownerUid == request.auth.uid
+        && leagueAfter().code == code
+        && (!('name' in request.resource.data) || request.resource.data.name == leagueAfter().name);
+      // Al renombrar la liga se renombra aquí también
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && leagueAfter().ownerUid == request.auth.uid
+        && request.resource.data.name == leagueAfter().name;
       allow delete: if signedIn()
         && get(/databases/$(database)/documents/leagues/$(resource.data.leagueId)).data.ownerUid == request.auth.uid;
     }
