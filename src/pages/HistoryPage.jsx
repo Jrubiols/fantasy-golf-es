@@ -11,6 +11,7 @@ import Icon from '../components/ui/Icon'
 import Ordinal from '../components/ui/Ordinal'
 import Points from '../components/ui/Points'
 import TeamList from '../components/ui/TeamList'
+import Achievements from '../components/ui/Achievements'
 
 function Stat({ label, children }) {
   return (
@@ -60,6 +61,8 @@ export default function HistoryPage() {
           <Stat label="Media">{stats.average}</Stat>
         </div>
       </section>
+
+      {entries !== null && <div className="mb-5"><Achievements entries={entries} /></div>}
 
       {entries === null ? (
         <Skeleton className="h-20" count={4} />

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { doc, updateDoc } from 'firebase/firestore'
 import { db } from '../services/firebase'
@@ -8,6 +8,8 @@ import PageHeader from '../components/ui/PageHeader'
 import ClubCard from '../components/ui/ClubCard'
 import Icon from '../components/ui/Icon'
 import PushCard from '../components/ui/PushCard'
+import Achievements from '../components/ui/Achievements'
+import { subscribeMyEntries } from '../services/firestoreService'
 
 export default function ProfilePage() {
   const { user, profile, logout } = useAuth()
@@ -17,6 +19,8 @@ export default function ProfilePage() {
   const [clubName, setClubName] = useState(profile?.clubName ?? '')
   const [status, setStatus] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [entries, setEntries] = useState(null)
+  useEffect(() => subscribeMyEntries(user.uid, setEntries, () => setEntries([])), [user.uid])
 
   const dirty = color !== current.id || clubName.trim() !== (profile?.clubName ?? '')
 
@@ -72,6 +76,8 @@ export default function ProfilePage() {
       </form>
 
       <div className="mt-5 animate-fade-up [animation-delay:140ms]"><PushCard /></div>
+
+      {entries && <div className="mt-5"><Achievements entries={entries} /></div>}
 
       <Link to="/historial" className="card mt-5 flex items-center gap-3 p-5 transition-transform active:scale-[0.99]">
         <span className="flex size-11 items-center justify-center rounded-full bg-track text-pine"><Icon name="history" /></span>

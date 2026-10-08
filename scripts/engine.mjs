@@ -2,7 +2,7 @@
 // Lo ejecuta GitHub Actions cada 15 minutos (scripts/sync.mjs). Es idempotente: si se ejecuta
 // dos veces seguidas, la segunda no cambia nada.
 import { Timestamp } from 'firebase-admin/firestore'
-import { fetchLeaderboard, fetchScoreboard, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
+import { fetchLeaderboard, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
 import { applySubstitutions, playerPoints, teamPoints } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
@@ -158,6 +158,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
       if (e.tournamentId === tournament.id || (e.startDate ?? '') >= (tournament.startDate ?? '')) continue
       usedChips.set(e.uid, new Set([...(usedChips.get(e.uid) ?? []), e.chip]))
     }
+    const fieldById = new Map(fieldPlayers.map((p) => [p.id, p]))
     const teams = picksSnap.docs.map((d) => {
       const raw = d.data()
       const chip = raw.chip && !usedChips.get(raw.uid)?.has(raw.chip) ? raw.chip : null
@@ -183,6 +184,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         captainId: t.captainId,
         substitutions: t.substitutions,
         chip: t.chip ?? null,
+        stats: teamStats(t.playerIds, t.captainId, fieldById, tournament),
         chipRejected: Boolean(t.requestedChip) && !t.chip,
         cost: t.cost,
         points: t.points,
@@ -218,6 +220,20 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
 
   log(`${tournament.name} (${tournament.status}): ${summary.players} jugadores actualizados, ${summary.priced} con precio nuevo, ${summary.entries} equipos, ${summary.standings} en la temporada, ${summary.notified} avisos`)
   return summary
+}
+
+/** Estadísticas del equipo en el torneo, para los logros: birdies, eagles, corte y acierto del capitán. */
+export function teamStats(playerIds, captainId, fieldById, tournament) {
+  const team = playerIds.map((id) => fieldById.get(id)).filter(Boolean)
+  const sum = (key) => team.reduce((s, p) => s + (p.holes?.[key] ?? 0), 0)
+  const cutDone = tournament.cutRound > 0 && (tournament.status === 'final' || tournament.round > tournament.cutRound)
+  const best = Math.max(...team.map((p) => p.points ?? 0))
+  return {
+    birdies: sum('birdies'),
+    eagles: sum('eagles') + sum('albatross'),
+    allMadeCut: cutDone && team.length === playerIds.length && team.every((p) => !isEliminated(p.status)),
+    captainTop: (fieldById.get(captainId)?.points ?? -Infinity) >= best,
+  }
 }
 
 export async function updateSeasonStandings(db, season, now = new Date()) {
