@@ -1,0 +1,29 @@
+# Motor de puntos: lee ESPN y actualiza Firestore cada 15 minutos.
+# Necesita el secreto FIREBASE_SERVICE_ACCOUNT (JSON de la cuenta de servicio de Firebase).
+# También se puede lanzar a mano desde la pestaña Actions → Sincronizar ESPN → Run workflow.
+name: Sincronizar ESPN
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# Si una ejecución tarda, la siguiente espera en vez de pisarla
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node scripts/sync.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
