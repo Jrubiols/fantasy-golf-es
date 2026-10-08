@@ -155,6 +155,7 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         uid: t.uid,
         tournamentId: tournament.id,
         tournamentName: tournament.name,
+        startDate: tournament.startDate,
         season: tournament.season,
         displayName: clubs.get(t.uid)?.displayName ?? t.displayName,
         photoURL: t.photoURL ?? null,

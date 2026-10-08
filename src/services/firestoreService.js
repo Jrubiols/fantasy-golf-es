@@ -56,6 +56,12 @@ export function subscribeMyEntries(uid, callback, onError) {
   return onSnapshot(query(collection(db, 'entries'), where('uid', '==', uid)), (snap) => callback(toList(snap)), onError)
 }
 
+/** Equipos de los torneos ya terminados de una temporada (para los ganadores de cada semana). */
+export function subscribeFinalEntries(season, callback, onError) {
+  const q = query(collection(db, 'entries'), where('season', '==', season), where('final', '==', true))
+  return onSnapshot(q, (snap) => callback(toList(snap)), onError)
+}
+
 export function subscribeSeasonStandings(season, callback, onError) {
   return onSnapshot(collection(db, 'seasons', String(season), 'standings'), (snap) => callback(toList(snap)), onError)
 }

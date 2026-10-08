@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { doc, updateDoc } from 'firebase/firestore'
 import { db } from '../services/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -72,6 +72,12 @@ export default function ProfilePage() {
       </form>
 
       <div className="mt-5 animate-fade-up [animation-delay:140ms]"><PushCard /></div>
+
+      <Link to="/historial" className="card mt-5 flex items-center gap-3 p-5 transition-transform active:scale-[0.99]">
+        <span className="flex size-11 items-center justify-center rounded-full bg-track text-pine"><Icon name="history" /></span>
+        <span className="flex-1"><span className="headline block text-[1.5rem]">Mi historial</span><span className="text-sm text-muted">Tus torneos, puestos y equipos</span></span>
+        <Icon name="arrow" className="text-pine" />
+      </Link>
 
       <div className="mt-8 flex justify-center">
         <button className="btn-ghost" onClick={handleLogout}><Icon name="logout" className="size-4" />Cerrar sesión</button>

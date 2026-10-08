@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../services/firebase'
-import { subscribeEntries, subscribeSeasonStandings } from '../services/firestoreService'
+import { subscribeEntries, subscribeFinalEntries, subscribeSeasonStandings } from '../services/firestoreService'
 
 /** Perfiles públicos (nombre y foto) de una lista de usuarios. */
 export function useProfiles(uids) {
@@ -69,4 +69,32 @@ export function useGroupStandings(memberIds, source, profiles) {
       }
     }))
   }, [memberIds, source, profiles])
+}
+
+/**
+ * Ganador de cada torneo terminado entre un grupo de usuarios (los de una liga), del más reciente al más antiguo.
+ * Devuelve [{ tournamentId, tournamentName, startDate, winners: [entrada], count }].
+ */
+export function useWeeklyWinners(season, memberIds) {
+  const [finals, setFinals] = useState(null)
+  useEffect(() => {
+    if (!season) return
+    return subscribeFinalEntries(season, setFinals, (err) => { console.error(err); setFinals([]) })
+  }, [season])
+
+  return useMemo(() => {
+    if (!finals) return null
+    const members = new Set(memberIds)
+    const byTournament = new Map()
+    for (const e of finals.filter((e) => members.has(e.uid))) {
+      byTournament.set(e.tournamentId, [...(byTournament.get(e.tournamentId) ?? []), e])
+    }
+    return [...byTournament.values()]
+      .map((list) => {
+        const best = Math.max(...list.map((e) => e.points))
+        const { tournamentId, tournamentName, startDate } = list[0]
+        return { tournamentId, tournamentName, startDate, winners: list.filter((e) => e.points === best), count: list.length }
+      })
+      .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''))
+  }, [finals, memberIds])
 }

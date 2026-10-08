@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
-import { useEntries, useGroupStandings, useProfiles, useSeasonStandings } from '../hooks/useLeagueData'
+import { useEntries, useGroupStandings, useProfiles, useSeasonStandings, useWeeklyWinners } from '../hooks/useLeagueData'
 import { backfillInviteName, createLeague, deleteLeague, inviteLink, joinLeague, leaveLeague, renameLeague, subscribeLeague, subscribeMyLeagues } from '../services/firestoreService'
 import { clubColor } from '../lib/clubs'
+import { formatDateRange } from '../utils/format'
+import Avatar from '../components/ui/Avatar'
+import Points from '../components/ui/Points'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Icon from '../components/ui/Icon'
@@ -106,7 +109,43 @@ function LeagueList() {
 const VIEWS = [
   { id: 'tournament', label: 'Torneo' },
   { id: 'season', label: 'Temporada' },
+  { id: 'winners', label: 'Ganadores' },
 ]
+
+// Quién ganó cada semana dentro de la liga
+function Winners({ weeks, profiles, currentUid }) {
+  if (!weeks) return <Skeleton className="h-20" count={3} />
+  if (!weeks.length) return <div className="card"><EmptyState title="Cuando termine el primer torneo, aquí verás quién lo ganó." /></div>
+  return (
+    <ol className="flex flex-col gap-3">
+      {weeks.map((w, i) => (
+        <li key={w.tournamentId} className="card animate-fade-up px-4 py-3.5" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="truncate font-display text-[1.3rem] leading-tight font-extrabold text-pine uppercase">{w.tournamentName}</p>
+            <p className="shrink-0 text-xs text-muted">{formatDateRange(w.startDate)}</p>
+          </div>
+          {w.winners.map((e) => {
+            const p = profiles[e.uid] ?? {}
+            return (
+              <div key={e.uid} className="mt-2.5 flex items-center gap-3">
+                <Avatar name={p.displayName ?? e.displayName} color={p.color ?? e.color} uid={e.uid} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">
+                    {p.displayName ?? e.displayName}
+                    {e.uid === currentUid && <span className="ml-1.5 text-xs text-pine">tú</span>}
+                  </span>
+                  <span className="block text-xs text-muted">Ganó entre {w.count} · {e.rank}º en el ranking general</span>
+                </span>
+                <Points value={e.points} className="text-[1.7rem]" />
+              </div>
+            )
+          })}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 
 function LeagueDetail({ leagueId }) {
   const { user } = useAuth()
@@ -141,6 +180,7 @@ function LeagueDetail({ leagueId }) {
     return [...byUid.values()]
   }, [season, entries])
 
+  const weeks = useWeeklyWinners(tournament?.season, memberIds)
   const tournamentRows = useGroupStandings(memberIds, entries, profiles)
   const seasonRows = useGroupStandings(memberIds, liveSeason, profiles)
 
@@ -206,10 +246,13 @@ function LeagueDetail({ leagueId }) {
       <p className="mb-4 px-1 text-xs text-muted">
         {view === 'tournament'
           ? !tournament ? '' : locked ? `${tournament.name} · pulsa en un participante para ver su equipo` : `${tournament.name} · los equipos se descubren cuando empieza el torneo`
-          : `Temporada ${tournament?.season ?? ''} · suma de todos los torneos, incluido el que está en juego`}
+          : view === 'season' ? `Temporada ${tournament?.season ?? ''} · suma de todos los torneos, incluido el que está en juego`
+          : `Temporada ${tournament?.season ?? ''} · el mejor de la liga en cada torneo`}
       </p>
 
-      {!tournament ? (
+      {view === 'winners' ? (
+        <Winners weeks={weeks} profiles={profiles} currentUid={user.uid} />
+      ) : !tournament ? (
         <div className="card"><EmptyState title="Todavía no hay torneo esta semana." /></div>
       ) : !rows ? (
         <Skeleton className="h-44 rounded-[1.6rem]" count={3} />

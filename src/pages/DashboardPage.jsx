@@ -82,7 +82,10 @@ function MySeason({ user, season, liveEntry }) {
 
   return (
     <section className="card animate-fade-up p-5 [animation-delay:180ms]">
-      <p className="label">Temporada {season}</p>
+      <div className="flex items-baseline justify-between">
+        <p className="label">Temporada {season}</p>
+        <Link to="/historial" className="text-sm font-semibold text-pine">Historial</Link>
+      </div>
       <div className="mt-3 grid grid-cols-3 gap-2">
         <Stat label="Puesto"><Ordinal value={me?.rank} /></Stat>
         <Stat label="Puntos">{livePoints}</Stat>

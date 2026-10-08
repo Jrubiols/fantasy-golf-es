@@ -36,7 +36,8 @@ export const formatDateTime = (ms) => dateFormat.format(ms)
 
 export function formatDateRange(start, end) {
   if (!start) return ''
-  return `${shortDateFormat.format(new Date(start))} – ${shortDateFormat.format(new Date(end ?? start))}`
+  if (!end) return shortDateFormat.format(new Date(start))
+  return `${shortDateFormat.format(new Date(start))} – ${shortDateFormat.format(new Date(end))}`
 }
 
 /** "2 d 4 h", "3 h 20 min", "12 min" */
