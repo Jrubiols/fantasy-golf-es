@@ -2,7 +2,8 @@
 // Lo ejecuta GitHub Actions cada 15 minutos (scripts/sync.mjs). Es idempotente: si se ejecuta
 // dos veces seguidas, la segunda no cambia nada.
 import { Timestamp } from 'firebase-admin/firestore'
-import { fetchLeaderboard, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
+import { fetchLeaderboard, fetchPlayerOverview, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
+import { birdiesLine, outcome, PROPS_PER_ROUND, roundStat, seasonAverages, strokesLine } from '../src/lib/props.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
 import { applySubstitutions, CHIPS, playerPoints, teamPoints, withdrewBeforeStart } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
@@ -10,6 +11,7 @@ import { detectMoments, isBigMoment, leaders, momentsMessage, momentText } from 
 
 export const defaultSources = {
   leaderboard: (eventId) => fetchLeaderboard(eventId),
+  overview: (playerId, tour) => fetchPlayerOverview(playerId, tour),
   scoreboard: () => fetchScoreboard(),
   owgr: async () => {
     const res = await fetch(OWGR_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } })
@@ -145,6 +147,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     }
   }
 
+  // «Más o Menos»: preguntas para la próxima ronda y resolución de las ya jugadas
+  summary.props = await syncProps(db, { tournament, fieldPlayers, sources, now })
+
   // 5. Desde la primera salida, los equipos se publican y puntúan
   if (locked) {
     const picksSnap = await db.collection('picks').where('tournamentId', '==', tournament.id).get()
@@ -273,6 +278,68 @@ export async function syncOneAndDone(db, { tournament, fieldById, now }) {
     }
   })
   return commitAll(db, writes)
+}
+
+/**
+ * «Más o Menos». Antes de cada ronda (con los horarios ya publicados) se crean preguntas sobre
+ * los golfistas más caros que siguen en juego; cuando la ronda acaba se corrigen.
+ */
+export async function syncProps(db, { tournament, fieldPlayers, sources, now }) {
+  let written = 0
+  const byId = new Map(fieldPlayers.map((p) => [p.id, p]))
+  const roundDone = /complete|final/i.test(tournament.statusDetail ?? '') || tournament.status === 'final'
+  const nextRound = tournament.status === 'scheduled' ? 1 : roundDone ? tournament.round + 1 : null
+
+  // Crear las de la próxima ronda (una vez)
+  if (nextRound && nextRound <= (tournament.rounds ?? 4) && tournament.status !== 'final' && sources.overview) {
+    const ref = db.collection('props').doc(`${tournament.id}_r${nextRound}`)
+    const alive = fieldPlayers.filter((p) => !isEliminated(p.status) && p.teeTime && new Date(p.teeTime) > now)
+    if (!(await ref.get()).exists && alive.length) {
+      const lockAt = new Date(Math.min(...alive.map((p) => new Date(p.teeTime).getTime())))
+      const stars = [...alive].sort((a, b) => (b.price ?? 0) - (a.price ?? 0)).slice(0, PROPS_PER_ROUND)
+      const items = []
+      for (const [i, p] of stars.entries()) {
+        const avg = seasonAverages(await sources.overview(p.id, tournament.tour).catch(() => null))
+        const stat = i % 2 === 0 ? 'birdies' : 'strokes'
+        const line = stat === 'birdies' ? birdiesLine(avg.birdies ?? 3.5) : strokesLine(avg.average ?? 70.5, tournament.par ?? 71)
+        items.push({ id: `${p.id}-${stat}`, playerId: p.id, name: p.shortName ?? p.name, photoURL: p.photoURL ?? null, stat, line })
+      }
+      await ref.set({
+        tournamentId: tournament.id, tournamentName: tournament.name, season: tournament.season,
+        round: nextRound, lockAt: Timestamp.fromDate(lockAt), items, resolved: false, createdAt: Timestamp.fromDate(now),
+      })
+      written++
+    }
+  }
+
+  // Corregir las rondas ya terminadas
+  const open = await db.collection('props').where('tournamentId', '==', tournament.id).where('resolved', '==', false).get()
+  for (const doc of open.docs) {
+    const props = doc.data()
+    const finished = tournament.status === 'final' || tournament.round > props.round || (tournament.round === props.round && roundDone)
+    if (!finished) continue
+    const items = props.items.map((it) => {
+      const value = roundStat(byId.get(it.playerId), props.round, it.stat, tournament.holePars ?? {})
+      return { ...it, value, outcome: outcome(value, it.line) }
+    })
+    const picks = await db.collection('propPicks').where('propsId', '==', doc.id).get()
+    const writes = picks.docs.map((p) => {
+      const pick = p.data()
+      const graded = items.filter((it) => it.outcome && pick.choices?.[it.id])
+      return {
+        ref: db.collection('propResults').doc(p.id),
+        data: {
+          uid: pick.uid, displayName: pick.displayName, season: props.season, tournamentId: props.tournamentId,
+          tournamentName: props.tournamentName, round: props.round,
+          correct: graded.filter((it) => pick.choices[it.id] === it.outcome).length, total: graded.length,
+          updatedAt: Timestamp.fromDate(now),
+        },
+      }
+    })
+    written += await commitAll(db, writes)
+    await doc.ref.update({ items, resolved: true })
+  }
+  return written
 }
 
 const firstName = (name) => String(name ?? 'Alguien').split(' ')[0]

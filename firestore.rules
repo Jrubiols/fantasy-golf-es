@@ -133,6 +133,24 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
+    // «Más o Menos»: las preguntas y los resultados los escribe el motor
+    match /props/{id} { allow read: if signedIn(); }
+    match /propResults/{id} { allow read: if signedIn(); }
+    match /propPicks/{id} {
+      function propsDoc() { return get(/databases/$(database)/documents/props/$(request.resource.data.propsId)).data; }
+      allow get: if signedIn() && id.matches('.*_' + request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'propsId', 'choices', 'displayName', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.propsId + '_' + request.auth.uid
+        && request.resource.data.choices is map
+        && request.resource.data.choices.size() <= 8
+        && request.resource.data.choices.values().hasOnly(['more', 'less'])
+        && isText(request.resource.data.displayName, 1, 60)
+        && request.resource.data.updatedAt == request.time
+        && request.time < propsDoc().lockAt;
+    }
+
     match /leagues/{lid} {
       function league() { return request.resource.data; }
 

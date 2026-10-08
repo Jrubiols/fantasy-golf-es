@@ -10,6 +10,7 @@ import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
 import LockerRoom from '../components/ui/LockerRoom'
+import { MoreLessStandings } from '../components/ui/MoreLess'
 import { OadStandings } from '../components/ui/OneAndDone'
 import { useOadResults } from '../hooks/useOneAndDone'
 import { drawLeagueSummary, shareImage } from '../lib/shareImage'
@@ -383,6 +384,9 @@ function LeagueDetail({ leagueId }) {
           <h2 className="headline mb-1 px-1 text-[1.8rem]">Sin repetir</h2>
           <p className="mb-3 px-1 text-xs text-muted">Un golfista por torneo, sin repetir en la temporada · dinero ganado</p>
           <OadStandings results={oadResults} memberIds={memberIds} profiles={profiles} currentUid={user.uid} />
+          <h2 className="headline mt-6 mb-1 px-1 text-[1.8rem]">Más o menos</h2>
+          <p className="mb-3 px-1 text-xs text-muted">Aciertos de la temporada en las preguntas de cada ronda</p>
+          <MoreLessStandings season={tournament?.season} memberIds={memberIds} profiles={profiles} currentUid={user.uid} />
         </div>
       )}
 

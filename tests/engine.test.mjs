@@ -15,6 +15,7 @@ const sources = (leaderboard) => ({
   leaderboard: async () => leaderboard,
   scoreboard: async () => fixture('scoreboard-live'),
   owgr: async () => fixture('owgr'),
+  overview: async () => fixture('overview'),
 })
 const quiet = () => {}
 
@@ -22,7 +23,7 @@ const db = getFirestore(initializeApp({ projectId: 'demo-fantasy-golf' }))
 db.settings({ ignoreUndefinedProperties: true })
 
 async function clear() {
-  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config', 'leagues', 'oadPicks', 'oadResults']) await db.recursiveDelete(db.collection(name))
+  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config', 'leagues', 'oadPicks', 'oadResults', 'props', 'propPicks', 'propResults']) await db.recursiveDelete(db.collection(name))
 }
 
 /** Equipo válido: el más caro que quepa en 100M, empezando por el jugador indicado */
@@ -353,5 +354,37 @@ describe('sin repetir', () => {
     const carla = (await db.doc(`oadResults/${liveId}_carla`).get()).data()
     assert.equal(carla.reused, true)
     assert.equal(carla.earnings, 0)
+  })
+})
+
+describe('más o menos', () => {
+  const id = live.events[0].id
+  test('crea las preguntas de la próxima ronda y corrige la terminada', async () => {
+    await clear()
+    // Ronda 1 ya preparada antes (como si la hubiera creado el motor el día anterior)
+    await db.doc(`props/${id}_r1`).set({
+      tournamentId: id, tournamentName: 'Baycurrent Classic', season: 2026, round: 1, lockAt: new Date('2026-10-07T23:45:00Z'), resolved: false,
+      items: [
+        { id: '5054388-birdies', playerId: '5054388', name: 'Jacob Bridgeman', stat: 'birdies', line: 4.5 },
+        { id: '5054388-strokes', playerId: '5054388', name: 'Jacob Bridgeman', stat: 'strokes', line: 65.5 },
+      ],
+    })
+    await db.doc(`propPicks/${id}_r1_ana`).set({ uid: 'ana', propsId: `${id}_r1`, displayName: 'Ana', choices: { '5054388-birdies': 'more', '5054388-strokes': 'more' } })
+
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:00:00Z'), log: quiet })
+
+    const r1 = (await db.doc(`props/${id}_r1`).get()).data()
+    assert.equal(r1.resolved, true)
+    assert.deepEqual(r1.items.map((it) => [it.value, it.outcome]), [[8, 'more'], [63, 'less']])
+    const ana = (await db.doc(`propResults/${id}_r1_ana`).get()).data()
+    assert.deepEqual([ana.correct, ana.total], [1, 2])
+
+    // La ronda 1 terminó: se preparan las de la ronda 2, que cierran con la primera salida
+    const r2 = (await db.doc(`props/${id}_r2`).get()).data()
+    assert.equal(r2.round, 2)
+    assert.equal(r2.items.length, 8)
+    assert.equal(r2.lockAt.toDate().toISOString(), '2026-10-08T23:45:00.000Z')
+    assert.ok(r2.items.every((it) => it.line % 1 === 0.5))
+    assert.deepEqual(r2.items.slice(0, 2).map((it) => [it.stat, it.line]), [['birdies', 3.5], ['strokes', 69.5]])
   })
 })

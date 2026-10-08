@@ -162,6 +162,24 @@ describe('sin repetir', () => {
   })
 })
 
+describe('más o menos', () => {
+  const ref = (db, uid) => doc(db, 'propPicks', `P1_${uid}`)
+  const pick = (uid, choices = { a: 'more' }) => ({ uid, propsId: 'P1', choices, displayName: uid, updatedAt: serverTimestamp() })
+  const props = (minutes) => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'props', 'P1'), { lockAt: Timestamp.fromMillis(Date.now() + minutes * 60_000) }))
+
+  test('se responde antes del cierre, solo más o menos', async () => {
+    await props(60)
+    await assertSucceeds(setDoc(ref(as('ana'), 'ana'), pick('ana', { a: 'more', b: 'less' })))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), pick('ana', { a: 'quizá' })))
+    await assertFails(setDoc(ref(as('ana'), 'bea'), pick('bea')))
+    await assertFails(getDoc(ref(as('bea'), 'ana')))
+  })
+  test('cerrado tras la primera salida de la ronda', async () => {
+    await props(-1)
+    await assertFails(setDoc(ref(as('ana'), 'ana'), pick('ana')))
+  })
+})
+
 describe('ligas', () => {
   async function createLeague(uid, lid = 'L1', code = 'ABC123') {
     const db = as(uid)
