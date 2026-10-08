@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
-import { doc, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { deleteField, doc, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import { auth, db, googleProvider } from '../services/firebase'
 import { AuthContext } from './auth-context'
 
@@ -42,8 +42,10 @@ export function AuthProvider({ children }) {
               return
             }
             const data = snap.data()
-            if (data.displayName !== displayName || data.photoURL !== photoURL) {
-              await updateDoc(ref, { displayName, photoURL })
+            // Los perfiles de la versión antigua guardaban el email: se borra al entrar
+            const legacy = 'email' in data || 'uid' in data
+            if (legacy || data.displayName !== displayName || data.photoURL !== photoURL) {
+              await updateDoc(ref, { displayName, photoURL, ...(legacy && { email: deleteField(), uid: deleteField() }) })
             }
             setProfile(data)
           } catch (err) {

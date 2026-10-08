@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
 import {
-  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
+  arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore'
 
 const TID = 't1'
@@ -60,6 +60,12 @@ describe('perfiles', () => {
     await setDoc(doc(as('ana'), 'users/ana'), profile)
     await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { isAdmin: true }))
     await assertSucceeds(updateDoc(doc(as('ana'), 'users/ana'), { displayName: 'Ana G.' }))
+  })
+  test('los perfiles antiguos pueden borrar el email, pero nadie lo añade', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users/ana'), { ...profile, uid: 'ana', email: 'ana@example.com' }))
+    await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { email: 'otro@example.com' }))
+    await assertSucceeds(updateDoc(doc(as('ana'), 'users/ana'), { email: deleteField(), uid: deleteField() }))
+    await assertFails(updateDoc(doc(as('ana'), 'users/ana'), { email: 'ana@example.com' }))
   })
   test('sin sesión no se lee nada', () => assertFails(getDoc(doc(anon(), 'tournaments', TID))))
 })

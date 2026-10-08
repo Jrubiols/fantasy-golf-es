@@ -28,9 +28,12 @@ service cloud.firestore {
         && isOptionalText(request.resource.data.photoURL, 500)
         && request.resource.data.isAdmin == false
         && request.resource.data.createdAt == request.time;
-      // isAdmin solo se cambia desde la consola de Firebase
+      // isAdmin solo se cambia desde la consola de Firebase. Los perfiles de la versión antigua
+      // guardaban email y uid: se permite borrarlos (nunca añadirlos)
       allow update: if isUser(uid)
-        && onlyChanges(['displayName', 'photoURL'])
+        && onlyChanges(['displayName', 'photoURL', 'email', 'uid'])
+        && !('email' in request.resource.data)
+        && !('uid' in request.resource.data)
         && isText(request.resource.data.displayName, 1, 60)
         && isOptionalText(request.resource.data.photoURL, 500);
     }
