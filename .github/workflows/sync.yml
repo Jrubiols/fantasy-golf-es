@@ -24,6 +24,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: node scripts/sync.mjs
+      # Sin el secreto (por ejemplo, en un fork) se avisa en vez de fallar cada 15 minutos
+      - run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::warning::Falta el secreto FIREBASE_SERVICE_ACCOUNT: no se sincroniza"
+            exit 0
+          fi
+          node scripts/sync.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
