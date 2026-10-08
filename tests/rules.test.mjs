@@ -107,6 +107,12 @@ describe('equipos', () => {
     await seed({ lockInMinutes: -1 })
     await assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana')))
   })
+  test('modo prueba: un admin puede jugar fuera de plazo', async () => {
+    await seed({ lockInMinutes: -1 })
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users/jefe'), { displayName: 'Jefe', isAdmin: true }))
+    await assertSucceeds(setDoc(ref(as('jefe'), 'jefe'), picks('jefe')))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana')))
+  })
   test('el coste tiene que cuadrar con los precios', () => assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { cost: 50 }))))
   test('sin jugadores repetidos', () => {
     const team = ['p1', 'p1', 'p3', 'p4', 'p5', 'p6']

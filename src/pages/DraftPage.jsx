@@ -75,6 +75,8 @@ export default function DraftPage() {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(null)
   const [entry, setEntry] = useState(null)
+  // Modo prueba (solo administradores): hacer equipo aunque el torneo ya esté cerrado
+  const [testMode, setTestMode] = useState(false)
   const [chip, setChip] = useState(null)
   const [myEntries, setMyEntries] = useState([])
   const teamSize = CHIPS[chip]?.size ?? TEAM_SIZE
@@ -121,7 +123,7 @@ export default function DraftPage() {
   }
 
   // Equipos cerrados: el equipo ya no se toca y se ven sus puntos en directo
-  if (locked) {
+  if (locked && !testMode) {
     return (
       <div className="mx-auto max-w-3xl px-4 pt-4">
         <TournamentCard tournament={tournament} title="Mi equipo" />
@@ -138,6 +140,11 @@ export default function DraftPage() {
             </>
           ) : (
             <EmptyState title="No hiciste equipo para este torneo. ¡El próximo no se te escapa!" />
+          )}
+          {profile?.isAdmin && (
+            <button className="btn-ghost mb-3 w-full" onClick={() => setTestMode(true)}>
+              Modo prueba: {saved ? 'cambiar' : 'hacer'} equipo fuera de plazo
+            </button>
           )}
         </section>
         <OadCard tournament={tournament} players={players} byId={byId} locked />
@@ -199,6 +206,12 @@ export default function DraftPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 pt-4">
       <TournamentCard tournament={tournament} title="Mi equipo" />
+      {testMode && (
+        <p className="mt-3 rounded-2xl bg-gold/20 px-4 py-3 text-sm text-[#5c4508]">
+          <strong>Modo prueba:</strong> el torneo ya ha empezado. Tu equipo contará con todo lo jugado y aparecerá como «fuera de plazo».
+          <button className="ml-2 font-semibold underline" onClick={() => setTestMode(false)}>Salir</button>
+        </p>
+      )}
 
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-start">
         {/* Presupuesto y plazas del equipo */}

@@ -19,6 +19,8 @@ service cloud.firestore {
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function isText(value, min, max) { return value is string && value.size() >= min && value.size() <= max; }
     function isOptionalText(value, max) { return value == null || (value is string && value.size() <= max); }
+    // Modo prueba: un administrador puede jugar fuera de plazo (su equipo queda marcado como tal)
+    function isAdmin() { return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true; }
 
     match /users/{uid} {
       // Color y nombre del club (opcionales). Los colores son los de src/lib/clubs.js
@@ -98,7 +100,7 @@ service cloud.firestore {
           && isText(d.displayName, 1, 60)
           && isOptionalText(d.photoURL, 500)
           && d.updatedAt == request.time
-          && request.time < tournament().firstTeeTime
+          && (request.time < tournament().firstTeeTime || isAdmin())
           && ((size == 6 && d.cost == cost6) || (size == 7 && d.cost == cost6 + price(6)))
           && d.cost <= 100;
       }
@@ -125,7 +127,7 @@ service cloud.firestore {
         && request.resource.data.season == oadTournament().season
         && isText(request.resource.data.displayName, 1, 60)
         && request.resource.data.updatedAt == request.time
-        && request.time < oadTournament().firstTeeTime;
+        && (request.time < oadTournament().firstTeeTime || isAdmin());
     }
 
     // Resultados de «Sin repetir» (los escribe el motor)

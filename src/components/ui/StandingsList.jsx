@@ -19,7 +19,7 @@ export default function StandingsList({ rows, currentUid, renderDetail, meta, ca
       {rows.map((s, i) => {
         const isMe = s.uid === currentUid
         const expandable = Boolean(renderDetail && s.points != null)
-        const subtitle = [isMe ? 'Tú' : null, s.clubName, meta?.(s)].filter(Boolean).join(' · ')
+        const subtitle = [isMe ? 'Tú' : null, s.clubName, meta?.(s), s.late ? 'fuera de plazo' : null].filter(Boolean).join(' · ')
         const asCard = i < cards && s.points != null
 
         const body = asCard ? (

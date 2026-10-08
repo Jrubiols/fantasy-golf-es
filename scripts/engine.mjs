@@ -203,6 +203,8 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         captainId: t.captainId,
         substitutions: t.substitutions,
         chip: t.chip ?? null,
+        // Equipo guardado después de la primera salida (modo prueba de administrador)
+        late: Boolean(t.updatedAt?.toDate && t.updatedAt.toDate() > firstTeeTime),
         stats: teamStats(t.playerIds, t.captainId, fieldById, tournament),
         chipRejected: Boolean(t.requestedChip) && !t.chip,
         cost: t.cost,
