@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { subscribeToActiveTournament, getPicks, getLeague } from '../services/firestoreService'
 import { fetchTournamentScoreboard, parseLeaderboard, TOURS } from '../services/espnApi'
 import { calculatePlayerPoints } from '../utils/scoring'
+import { firstName, golfScoreClass } from '../utils/format'
+import PageHeader from '../components/ui/PageHeader'
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
+import Points from '../components/ui/Points'
+import TournamentStatus from '../components/ui/TournamentStatus'
 
 export default function DashboardPage() {
   const { user, profile } = useAuth()
-  const navigate = useNavigate()
   const [tournament, setTournament] = useState(null)
   const [myPicks, setMyPicks] = useState(null)
   const [myPlayers, setMyPlayers] = useState([])
@@ -16,18 +21,18 @@ export default function DashboardPage() {
   const [loadingPicks, setLoadingPicks] = useState(true)
 
   useEffect(() => {
-    const unsub = subscribeToActiveTournament((t) => { setTournament(t); setLoadingTournament(false) })
-    return unsub
+    return subscribeToActiveTournament((t) => { setTournament(t); setLoadingTournament(false) })
   }, [])
 
   useEffect(() => {
     if (profile?.leagueId) getLeague(profile.leagueId).then(setLeague)
-  }, [profile])
+  }, [profile?.leagueId])
 
   useEffect(() => {
+    if (loadingTournament) return
     if (!user || !profile?.leagueId || !tournament) { setLoadingPicks(false); return }
     getPicks(user.uid, profile.leagueId, tournament.id).then((picks) => { setMyPicks(picks); setLoadingPicks(false) })
-  }, [user, profile, tournament])
+  }, [user, profile?.leagueId, tournament, loadingTournament])
 
   useEffect(() => {
     if (!tournament || !myPicks?.playerIds?.length) return
@@ -35,95 +40,85 @@ export default function DashboardPage() {
       .then((data) => {
         const all = parseLeaderboard(data)
         setMyPlayers(myPicks.playerIds.map((id) => all.find((p) => p.id === id)).filter(Boolean))
-      }).catch(console.error)
+      })
+      .catch(console.error)
   }, [tournament, myPicks])
 
   const totalPoints = myPlayers.reduce((sum, p) => sum + calculatePlayerPoints(p), 0)
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 pb-20 md:pb-6">
-      <div className="animate-fade-up" style={{ marginBottom: '2rem' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Bienvenido de nuevo</p>
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--cream)', fontFamily: 'Playfair Display, serif' }}>{user?.displayName?.split(' ')[0]}</h1>
-      </div>
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <PageHeader eyebrow="Bienvenido de nuevo" title={firstName(user?.displayName)} />
 
-      {/* Torneo */}
-      {loadingTournament ? <div className="card skeleton" style={{ height: 100 }} /> : !tournament ? (
-        <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay torneo activo en este momento</p>
-        </div>
+      {loadingTournament ? (
+        <Skeleton className="h-24 rounded-xl" />
+      ) : !tournament ? (
+        <div className="card p-5"><EmptyState title="No hay torneo activo en este momento" /></div>
       ) : (
-        <div className="card animate-fade-up" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: 'rgba(201,168,76,0.3)', animationDelay: '0.05s', opacity: 0 }}>
+        <section className="card flex animate-fade-up items-center justify-between border-gold-500/30 px-6 py-5 [animation-delay:50ms]">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              <span style={{ background: tournament.status === 'in' ? '#2d7a4f' : 'rgba(255,255,255,0.1)', color: tournament.status === 'in' ? '#a8f0c6' : 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 20, textTransform: 'uppercase' }}>
-                {tournament.status === 'in' ? '🔴 En juego' : tournament.status === 'pre' ? 'Próximamente' : 'Finalizado'}
-              </span>
-              {tournament.round && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Ronda {tournament.round}</span>}
+            <div className="mb-1 flex items-center gap-2">
+              <TournamentStatus status={tournament.status} />
+              {tournament.round && <span className="text-xs text-muted">Ronda {tournament.round}</span>}
             </div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--cream)', fontFamily: 'Playfair Display, serif' }}>{tournament.name}</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.15rem' }}>{tournament.venue}{tournament.city ? ` · ${tournament.city}` : ''}</p>
+            <h2 className="font-display text-xl font-bold text-cream">{tournament.name}</h2>
+            <p className="mt-0.5 text-sm text-muted">{tournament.venue}{tournament.city ? ` · ${tournament.city}` : ''}</p>
           </div>
-          <span style={{ fontSize: '1.8rem' }}>🏌️</span>
-        </div>
+          <span className="text-3xl" aria-hidden="true">🏌️</span>
+        </section>
       )}
 
-      <div style={{ display: 'grid', gap: '1.25rem', marginTop: '1.25rem' }} className="md:grid-cols-2">
-        {/* Mi Equipo */}
-        <div className="card animate-fade-up" style={{ padding: '1.25rem', animationDelay: '0.1s', opacity: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontWeight: 600, fontSize: '1rem' }}>Mi Equipo</h3>
-            {myPicks && <span style={{ color: totalPoints >= 0 ? 'var(--green-light)' : '#e57373', fontWeight: 700, fontSize: '1.1rem', fontFamily: 'DM Mono, monospace' }}>{totalPoints > 0 ? '+' : ''}{totalPoints} pts</span>}
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <section className="card animate-fade-up p-5 [animation-delay:100ms]">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-semibold">Mi Equipo</h3>
+            {myPicks && <Points value={totalPoints} suffix=" pts" className="text-lg" />}
           </div>
-          {loadingPicks ? <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 44 }} />)}</div>
-          : !tournament ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Esperando el próximo torneo...</p>
-          : !myPicks ? (
-            <div style={{ textAlign: 'center', paddingTop: '1rem' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Aún no has elegido tu equipo</p>
-              <button className="btn-primary" onClick={() => navigate('/draft')}>Elegir jugadores ⛳</button>
-            </div>
-          ) : myPlayers.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cargando datos del torneo...</p>
-          : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {myPlayers.map((p) => {
-                const pts = calculatePlayerPoints(p)
-                return (
-                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', minWidth: 28 }}>{p.positionDisplay}</span>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{p.name}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '0.85rem', fontFamily: 'DM Mono, monospace', color: p.totalScoreValue < 0 ? 'var(--green-light)' : p.totalScoreValue > 0 ? '#e57373' : 'var(--text-primary)' }}>{p.totalScore}</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, fontFamily: 'DM Mono, monospace', color: pts >= 0 ? 'var(--gold)' : '#e57373', minWidth: 40, textAlign: 'right' }}>{pts > 0 ? '+' : ''}{pts}</span>
-                    </div>
+          {loadingPicks ? (
+            <Skeleton count={3} />
+          ) : !tournament ? (
+            <p className="text-sm text-muted">Esperando el próximo torneo...</p>
+          ) : !myPicks ? (
+            <EmptyState title="Aún no has elegido tu equipo" action={<Link to="/draft" className="btn-primary">Elegir jugadores ⛳</Link>} />
+          ) : myPlayers.length === 0 ? (
+            <p className="text-sm text-muted">Cargando datos del torneo...</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {myPlayers.map((p) => (
+                <li key={p.id} className="list-row justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="min-w-7 text-xs text-muted">{p.positionDisplay}</span>
+                    <span className="text-sm font-medium">{p.name}</span>
                   </div>
-                )
-              })}
-            </div>
+                  <div className="flex items-center gap-3 font-mono text-sm">
+                    <span className={golfScoreClass(p.totalScoreValue)}>{p.totalScore}</span>
+                    <Points value={calculatePlayerPoints(p)} className="min-w-10 text-right" />
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
+        </section>
 
-        {/* Mi Liga */}
-        <div className="card animate-fade-up" style={{ padding: '1.25rem', animationDelay: '0.15s', opacity: 0 }}>
-          <h3 style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '1rem' }}>Mi Liga</h3>
+        <section className="card animate-fade-up p-5 [animation-delay:150ms]">
+          <h3 className="mb-4 font-semibold">Mi Liga</h3>
           {!profile?.leagueId ? (
-            <div style={{ textAlign: 'center', paddingTop: '0.5rem' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>No perteneces a ninguna liga todavía</p>
-              <button className="btn-primary" onClick={() => navigate('/league')} style={{ width: '100%' }}>Crear o unirse a una liga</button>
-            </div>
-          ) : !league ? <div className="skeleton" style={{ height: 80 }} />
-          : (
-            <div>
-              <div style={{ padding: '1rem', background: 'rgba(201,168,76,0.07)', borderRadius: '8px', border: '1px solid rgba(201,168,76,0.15)', marginBottom: '1rem' }}>
-                <p style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--gold)', fontFamily: 'Playfair Display, serif' }}>{league.name}</p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{league.members?.length} participantes</p>
-                <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--text-muted)' }}>Código: <span style={{ color: 'var(--cream)', fontWeight: 600, fontFamily: 'DM Mono, monospace' }}>{league.code}</span></p>
+            <EmptyState title="No perteneces a ninguna liga todavía" action={<Link to="/league" className="btn-primary w-full">Crear o unirse a una liga</Link>} />
+          ) : !league ? (
+            <Skeleton className="h-20" />
+          ) : (
+            <>
+              <div className="mb-4 rounded-lg border border-gold-500/15 bg-gold-500/7 p-4">
+                <p className="font-display text-lg font-bold text-gold-500">{league.name}</p>
+                <p className="mt-1 text-xs text-muted">{league.members?.length} participantes</p>
+                <p className="mt-2 text-xs text-muted">
+                  Código: <span className="font-mono font-semibold text-cream">{league.code}</span>
+                </p>
               </div>
-              <button className="btn-secondary" style={{ width: '100%' }} onClick={() => navigate('/league')}>Ver clasificación →</button>
-            </div>
+              <Link to="/league" className="btn-secondary w-full">Ver clasificación →</Link>
+            </>
           )}
-        </div>
+        </section>
       </div>
     </div>
   )
