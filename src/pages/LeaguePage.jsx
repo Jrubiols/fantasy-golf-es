@@ -10,6 +10,8 @@ import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
 import LockerRoom from '../components/ui/LockerRoom'
+import { OadStandings } from '../components/ui/OneAndDone'
+import { useOadResults } from '../hooks/useOneAndDone'
 import { drawLeagueSummary, shareImage } from '../lib/shareImage'
 import { seasonDuels } from '../lib/duels'
 import Ordinal from '../components/ui/Ordinal'
@@ -257,6 +259,7 @@ function LeagueDetail({ leagueId }) {
   }, [season, entries])
 
   const { weeks, finals } = useWeeklyWinners(tournament?.season, memberIds)
+  const oadResults = useOadResults(tournament?.season)
   // Duelos: torneos terminados de la temporada más el que está en juego
   const duels = useMemo(() => {
     if (!finals || !entries) return null
@@ -373,6 +376,14 @@ function LeagueDetail({ leagueId }) {
           ) : undefined}
           meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
         />
+      )}
+
+      {view === 'season' && (
+        <div className="mt-6">
+          <h2 className="headline mb-1 px-1 text-[1.8rem]">Sin repetir</h2>
+          <p className="mb-3 px-1 text-xs text-muted">Un golfista por torneo, sin repetir en la temporada · dinero ganado</p>
+          <OadStandings results={oadResults} memberIds={memberIds} profiles={profiles} currentUid={user.uid} />
+        </div>
       )}
 
       {view === 'tournament' && locked && tournamentRows?.some((r) => r.points != null) && (

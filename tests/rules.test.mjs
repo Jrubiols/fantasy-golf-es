@@ -141,6 +141,27 @@ describe('equipos', () => {
   })
 })
 
+describe('sin repetir', () => {
+  const oad = (uid, overrides = {}) => ({ uid, tournamentId: TID, season: 2026, playerId: 'p1', alternateId: 'p2', displayName: uid, updatedAt: serverTimestamp(), ...overrides })
+  const ref = (db, uid) => doc(db, 'oadPicks', `${TID}_${uid}`)
+  beforeEach(() => env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'tournaments', TID), { season: 2026 })))
+
+  test('golfista y suplente del torneo, antes de la salida', () => assertSucceeds(setDoc(ref(as('ana'), 'ana'), oad('ana'))))
+  test('el suplente no puede ser el mismo', () => assertFails(setDoc(ref(as('ana'), 'ana'), oad('ana', { alternateId: 'p1' }))))
+  test('solo golfistas del torneo', () => assertFails(setDoc(ref(as('ana'), 'ana'), oad('ana', { playerId: 'nadie' }))))
+  test('cerrado tras la primera salida', async () => {
+    await seed({ lockInMinutes: -1 })
+    await env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'tournaments', TID), { season: 2026 }))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), oad('ana')))
+  })
+  test('privado y personal', async () => {
+    await setDoc(ref(as('ana'), 'ana'), oad('ana'))
+    await assertFails(getDoc(ref(as('bea'), 'ana')))
+    await assertFails(setDoc(ref(as('bea'), 'ana'), oad('ana')))
+    await assertFails(setDoc(doc(as('ana'), 'oadResults', 'x'), { earnings: 1e6 }))
+  })
+})
+
 describe('ligas', () => {
   async function createLeague(uid, lid = 'L1', code = 'ABC123') {
     const db = as(uid)

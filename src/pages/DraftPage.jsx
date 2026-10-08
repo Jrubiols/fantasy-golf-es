@@ -13,6 +13,7 @@ import PlayerPhoto from '../components/ui/PlayerPhoto'
 import Points from '../components/ui/Points'
 import TeamList from '../components/ui/TeamList'
 import TournamentCard from '../components/ui/TournamentCard'
+import { OadCard } from '../components/ui/OneAndDone'
 
 const SORTS = {
   price: { label: 'Precio', compare: (a, b) => b.price - a.price || a.name.localeCompare(b.name) },
@@ -139,6 +140,7 @@ export default function DraftPage() {
             <EmptyState title="No hiciste equipo para este torneo. ¡El próximo no se te escapa!" />
           )}
         </section>
+        <OadCard tournament={tournament} players={players} byId={byId} locked />
         <ScoringRules />
       </div>
     )
@@ -310,6 +312,7 @@ export default function DraftPage() {
         </section>
       </div>
 
+      <OadCard tournament={tournament} players={players} byId={byId} locked={false} />
       <ScoringRules />
     </div>
   )

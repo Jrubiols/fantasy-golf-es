@@ -14,6 +14,7 @@ import Ordinal from '../components/ui/Ordinal'
 import TeamList from '../components/ui/TeamList'
 import TournamentCard from '../components/ui/TournamentCard'
 import PushCard from '../components/ui/PushCard'
+import { OadCard } from '../components/ui/OneAndDone'
 
 function Stat({ label, children }) {
   return (
@@ -26,7 +27,7 @@ function Stat({ label, children }) {
 
 function MyTeam({ tournament, user, profile, entry }) {
   const { locked, lockAt, now } = useLocked(tournament)
-  const { byId } = usePlayers(tournament.id)
+  const { players, byId } = usePlayers(tournament.id)
   const [picks, setPicks] = useState(undefined)
   const club = clubColor(profile?.color, user.uid)
 
@@ -38,6 +39,7 @@ function MyTeam({ tournament, user, profile, entry }) {
 
   if (!picks) {
     return (
+      <>
       <ClubCard color={profile?.color} uid={user.uid} title={locked ? 'Sin equipo' : 'Haz tu equipo'} subtitle={locked ? 'Esta semana no juegas' : `Se cierra en ${formatCountdown(lockAt - now)}`}>
         {!locked && (
           <Link to="/draft" className="absolute bottom-4 left-4 inline-flex h-12 items-center gap-2 rounded-full bg-white px-5 font-display text-lg font-extrabold uppercase" style={{ color: club.bg }}>
@@ -45,6 +47,8 @@ function MyTeam({ tournament, user, profile, entry }) {
           </Link>
         )}
       </ClubCard>
+      {players?.length > 0 && <OadCard tournament={tournament} players={players} byId={byId} locked={locked} />}
+      </>
     )
   }
 
@@ -69,6 +73,7 @@ function MyTeam({ tournament, user, profile, entry }) {
           <Link to="/draft" className="btn-secondary my-3 w-full">Cambiar equipo · {formatPrice(100 - picks.cost)} libres</Link>
         )}
       </section>
+      {players?.length > 0 && <OadCard tournament={tournament} players={players} byId={byId} locked={locked} />}
     </>
   )
 }

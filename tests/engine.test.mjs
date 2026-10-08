@@ -22,7 +22,7 @@ const db = getFirestore(initializeApp({ projectId: 'demo-fantasy-golf' }))
 db.settings({ ignoreUndefinedProperties: true })
 
 async function clear() {
-  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config', 'leagues']) await db.recursiveDelete(db.collection(name))
+  for (const name of ['tournaments', 'picks', 'entries', 'seasons', 'config', 'leagues', 'oadPicks', 'oadResults']) await db.recursiveDelete(db.collection(name))
 }
 
 /** Equipo válido: el más caro que quepa en 100M, empezando por el jugador indicado */
@@ -314,5 +314,44 @@ describe('en directo: momentos y Vestuario', () => {
     await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:30:00Z'), log: quiet, messenger: m3 })
     assert.equal((await messages()).length, before)
     assert.equal(m3.sent.length, 0)
+  })
+})
+
+describe('sin repetir', () => {
+  test('suma las ganancias, entra el suplente si el titular no juega y no se puede repetir', async () => {
+    await clear()
+    const finalId = final.events[0].id
+    const liveId = live.events[0].id
+    const winner = final.events[0].competitions[0].competitors.find((c) => c.status.position.displayName === '1').athlete.id
+    // Semana 1: Ana elige al ganador; Bea, a Neergaard-Petersen (se retiró sin jugar) con el ganador de suplente
+    await sync(db, { sources: sources(final), now: new Date('2026-09-30T00:00:00Z'), log: quiet })
+    await db.doc(`oadPicks/${finalId}_ana`).set({ uid: 'ana', tournamentId: finalId, season: 2026, playerId: winner, alternateId: '4858859', displayName: 'Ana' })
+    await db.doc(`oadPicks/${finalId}_bea`).set({ uid: 'bea', tournamentId: finalId, season: 2026, playerId: '4858859', alternateId: winner, displayName: 'Bea' })
+    await sync(db, { sources: sources(final), now: new Date('2026-10-05T00:00:00Z'), log: quiet })
+    const ana = (await db.doc(`oadResults/${finalId}_ana`).get()).data()
+    const bea = (await db.doc(`oadResults/${finalId}_bea`).get()).data()
+    assert.equal(ana.earnings, 1080000)
+    assert.equal(bea.usedAlternate, true)
+    assert.equal(bea.earnings, 1080000)
+
+    // Semana 2: Ana repite golfista y no suma
+    const anyLive = live.events[0].competitions[0].competitors[0].athlete.id
+    await sync(db, { sources: sources(live), now: new Date('2026-10-06T00:00:00Z'), log: quiet })
+    await db.doc(`oadPicks/${liveId}_ana`).set({ uid: 'ana', tournamentId: liveId, season: 2026, playerId: winner, alternateId: anyLive, displayName: 'Ana' })
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:00:00Z'), log: quiet })
+    const week2 = (await db.doc(`oadResults/${liveId}_ana`).get()).data()
+    // Austin Smotherman no está en el Baycurrent: no figura en el torneo y entra el suplente
+    assert.equal(week2.usedAlternate, true)
+    assert.equal(week2.reused, false)
+
+    // Carla ya usó a ese golfista en una semana anterior: esta vez no suma
+    const other = live.events[0].competitions[0].competitors[1].athlete.id
+    await db.doc('oadResults/antes_carla').set({ uid: 'carla', season: 2026, tournamentId: 'antes', startDate: '2026-01-01T00:00Z', playerId: anyLive, reused: false, earnings: 5000 })
+    await db.doc(`tournaments/${liveId}`).update({ firstTeeTime: new Date('2026-10-09T00:00:00Z') })
+    await db.doc(`oadPicks/${liveId}_carla`).set({ uid: 'carla', tournamentId: liveId, season: 2026, playerId: anyLive, alternateId: other, displayName: 'Carla' })
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:15:00Z'), log: quiet })
+    const carla = (await db.doc(`oadResults/${liveId}_carla`).get()).data()
+    assert.equal(carla.reused, true)
+    assert.equal(carla.earnings, 0)
   })
 })

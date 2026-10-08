@@ -108,6 +108,31 @@ service cloud.firestore {
       allow create, update: if signedIn() && validPicks();
     }
 
+    // Modo «Sin repetir» (one and done): un golfista y un suplente por torneo, distintos y del torneo,
+    // privado hasta la primera salida. Que no se repita en la temporada lo controla el motor.
+    match /oadPicks/{id} {
+      function oadTournament() { return get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)).data; }
+      function inField(pid) { return exists(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)/players/$(pid)); }
+
+      allow get: if signedIn() && id.matches('.*_' + request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'tournamentId', 'season', 'playerId', 'alternateId', 'displayName', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.tournamentId + '_' + request.auth.uid
+        && request.resource.data.playerId != request.resource.data.alternateId
+        && inField(request.resource.data.playerId)
+        && inField(request.resource.data.alternateId)
+        && request.resource.data.season == oadTournament().season
+        && isText(request.resource.data.displayName, 1, 60)
+        && request.resource.data.updatedAt == request.time
+        && request.time < oadTournament().firstTeeTime;
+    }
+
+    // Resultados de «Sin repetir» (los escribe el motor)
+    match /oadResults/{id} {
+      allow read: if signedIn();
+    }
+
     match /leagues/{lid} {
       function league() { return request.resource.data; }
 

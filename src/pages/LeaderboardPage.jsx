@@ -14,11 +14,14 @@ import StandingsList from '../components/ui/StandingsList'
 import Tabs from '../components/ui/Tabs'
 import TeamList from '../components/ui/TeamList'
 import WeekStats from '../components/ui/WeekStats'
+import { OadStandings } from '../components/ui/OneAndDone'
+import { useOadResults } from '../hooks/useOneAndDone'
 
 const VIEWS = [
   { id: 'tournament', label: 'Torneo' },
   { id: 'season', label: 'Temporada' },
   { id: 'golfers', label: 'Golfistas' },
+  { id: 'oad', label: 'Sin repetir' },
 ]
 
 // Golfistas del torneo ordenados por los puntos de fantasy que dan
@@ -63,6 +66,7 @@ export default function LeaderboardPage() {
   const entries = useEntries(tournament?.id)
   const season = useSeasonStandings(tournament?.season)
   const { players, byId } = usePlayers(tournament?.id)
+  const oadResults = useOadResults(tournament?.season)
 
   const tournamentRows = useMemo(() => entries && withRanks(entries).map((e) => ({ ...e, photo: byId[e.captainId]?.photoURL })), [entries, byId])
   const seasonRows = useMemo(() => season && [...season].sort((a, b) => a.rank - b.rank), [season])
@@ -77,6 +81,8 @@ export default function LeaderboardPage() {
         <Skeleton className="h-44 rounded-[1.6rem]" count={3} />
       ) : !tournament ? (
         <div className="card"><EmptyState title="Todavía no hay torneo esta semana." /></div>
+      ) : view === 'oad' ? (
+        <OadStandings results={oadResults} currentUid={user?.uid} />
       ) : view === 'golfers' ? (
         <>
           {tournament.status !== 'scheduled' && <div className="-mt-1 mb-5"><WeekStats players={players} entries={entries} tournamentId={tournament.id} scopeLabel="Fantasy Golf ES" /></div>}

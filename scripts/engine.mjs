@@ -4,7 +4,7 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { fetchLeaderboard, fetchScoreboard, isEliminated, parseHoleStats, parsePlayers, parseTournament } from '../src/lib/espn.js'
 import { OWGR_URL, parseOwgr, priceField } from '../src/lib/pricing.js'
-import { applySubstitutions, CHIPS, playerPoints, teamPoints } from '../src/lib/scoring.js'
+import { applySubstitutions, CHIPS, playerPoints, teamPoints, withdrewBeforeStart } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
 import { detectMoments, isBigMoment, leaders, momentsMessage, momentText } from './moments.mjs'
 
@@ -197,6 +197,9 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     }))
     summary.entries = await commitAll(db, entryWrites)
 
+    // 5a. Modo «Sin repetir»: un golfista por torneo, sumando lo que gane
+    summary.oad = await syncOneAndDone(db, { tournament, fieldById, now })
+
     // 5b. En directo: momentos de los golfistas, cambios de líder y mensajes del Vestuario
     summary.notified += await liveEvents(db, { tournament, teams, fieldPlayers, storedPlayers, messenger, now })
 
@@ -224,6 +227,52 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
 
   log(`${tournament.name} (${tournament.status}): ${summary.players} jugadores actualizados, ${summary.priced} con precio nuevo, ${summary.entries} equipos, ${summary.standings} en la temporada, ${summary.notified} avisos`)
   return summary
+}
+
+/**
+ * «Sin repetir» (one and done): cada uno elige un golfista y un suplente por torneo y suma lo que
+ * gane ese golfista. Entra el suplente si el titular se retira antes de jugar. Un golfista ya usado
+ * en un torneo anterior de la temporada no suma (las reglas no pueden comprobarlo; el motor sí).
+ */
+export async function syncOneAndDone(db, { tournament, fieldById, now }) {
+  const picksSnap = await db.collection('oadPicks').where('tournamentId', '==', tournament.id).get()
+  if (picksSnap.empty) return 0
+  const earlierSnap = await db.collection('oadResults').where('season', '==', tournament.season).get()
+  const used = new Map()
+  for (const doc of earlierSnap.docs) {
+    const r = doc.data()
+    if (r.tournamentId === tournament.id || (r.startDate ?? '') >= (tournament.startDate ?? '') || r.reused) continue
+    used.set(r.uid, new Set([...(used.get(r.uid) ?? []), r.playerId]))
+  }
+  const writes = picksSnap.docs.map((d) => {
+    const pick = d.data()
+    const useAlternate = withdrewBeforeStart(fieldById.get(pick.playerId)) && !withdrewBeforeStart(fieldById.get(pick.alternateId))
+    const playerId = useAlternate ? pick.alternateId : pick.playerId
+    const player = fieldById.get(playerId) ?? {}
+    const reused = Boolean(used.get(pick.uid)?.has(playerId))
+    return {
+      ref: db.collection('oadResults').doc(d.id),
+      data: {
+        uid: pick.uid,
+        displayName: pick.displayName,
+        season: tournament.season,
+        tournamentId: tournament.id,
+        tournamentName: tournament.name,
+        startDate: tournament.startDate,
+        playerId,
+        playerName: player.name ?? null,
+        photoURL: player.photoURL ?? null,
+        positionDisplay: player.positionDisplay ?? '-',
+        usedAlternate: useAlternate,
+        reused,
+        // ESPN publica las ganancias al terminar; hasta entonces, 0
+        earnings: reused ? 0 : player.earnings ?? 0,
+        final: tournament.status === 'final',
+        updatedAt: Timestamp.fromDate(now),
+      },
+    }
+  })
+  return commitAll(db, writes)
 }
 
 const firstName = (name) => String(name ?? 'Alguien').split(' ')[0]
