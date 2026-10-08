@@ -150,11 +150,22 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
     // Color y nombre de club de cada jugador, para pintar las clasificaciones sin más lecturas
     const userRefs = picksSnap.docs.map((d) => db.collection('users').doc(d.data().uid))
     const clubs = new Map((userRefs.length ? await db.getAll(...userRefs) : []).map((u) => [u.id, u.data() ?? {}]))
+    // Comodines ya gastados esta temporada en torneos anteriores: uid → Set(comodines)
+    const usedChips = new Map()
+    const chipsSnap = await db.collection('entries').where('season', '==', tournament.season).where('chip', 'in', ['triple', 'seventh']).get()
+    for (const doc of chipsSnap.docs) {
+      const e = doc.data()
+      if (e.tournamentId === tournament.id || (e.startDate ?? '') >= (tournament.startDate ?? '')) continue
+      usedChips.set(e.uid, new Set([...(usedChips.get(e.uid) ?? []), e.chip]))
+    }
     const teams = picksSnap.docs.map((d) => {
-      const p = d.data()
+      const raw = d.data()
+      const chip = raw.chip && !usedChips.get(raw.uid)?.has(raw.chip) ? raw.chip : null
+      // Sin comodín válido, el séptimo jugador no cuenta
+      const p = { ...raw, chip, requestedChip: raw.chip ?? null, playerIds: chip === 'seventh' ? raw.playerIds : raw.playerIds.slice(0, 6) }
       // Quien se retira antes de jugar se sustituye solo (ver applySubstitutions)
       const team = applySubstitutions(p.playerIds, p.captainId, fieldPlayers)
-      return { id: d.id, ...p, ...team, originalPlayerIds: p.playerIds, points: teamPoints(team.playerIds, team.captainId, pointsById) }
+      return { id: d.id, ...p, ...team, originalPlayerIds: p.playerIds, points: teamPoints(team.playerIds, team.captainId, pointsById, chip) }
     })
     const entryWrites = rankBy(teams, (t) => t.points).map(({ item: t, rank }) => ({
       ref: db.collection('entries').doc(t.id),
@@ -171,6 +182,8 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
         playerIds: t.playerIds,
         captainId: t.captainId,
         substitutions: t.substitutions,
+        chip: t.chip ?? null,
+        chipRejected: Boolean(t.requestedChip) && !t.chip,
         cost: t.cost,
         points: t.points,
         rank,

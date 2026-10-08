@@ -25,7 +25,7 @@ function Stat({ label, children }) {
 function PastTeam({ entry, clubBg }) {
   const { byId, loading } = usePlayers(entry.tournamentId)
   if (loading) return <Skeleton className="my-3 h-14" count={3} />
-  return <TeamList playerIds={entry.playerIds} captainId={entry.captainId} substitutions={entry.substitutions} playersById={byId} clubBg={clubBg} tournamentId={entry.tournamentId} />
+  return <TeamList playerIds={entry.playerIds} captainId={entry.captainId} substitutions={entry.substitutions} chip={entry.chip} playersById={byId} clubBg={clubBg} tournamentId={entry.tournamentId} />
 }
 
 export default function HistoryPage() {

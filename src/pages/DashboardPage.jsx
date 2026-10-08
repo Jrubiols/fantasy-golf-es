@@ -64,7 +64,7 @@ function MyTeam({ tournament, user, profile, entry }) {
         pointsLabel={locked ? 'Puntos' : 'Coste'}
       />
       <section className="card mt-4 animate-fade-up px-4 pt-3 pb-1 [animation-delay:120ms]">
-        <TeamList playerIds={team.playerIds} captainId={team.captainId} substitutions={team.substitutions} playersById={byId} showPoints={locked} clubBg={club.bg} tournamentId={tournament.id} />
+        <TeamList playerIds={team.playerIds} captainId={team.captainId} substitutions={team.substitutions} chip={team.chip} playersById={byId} showPoints={locked} clubBg={club.bg} tournamentId={tournament.id} />
         {!locked && (
           <Link to="/draft" className="btn-secondary my-3 w-full">Cambiar equipo · {formatPrice(100 - picks.cost)} libres</Link>
         )}

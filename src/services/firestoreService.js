@@ -34,12 +34,13 @@ export async function getMyPicks(tournamentId, uid) {
 }
 
 /** El coste se suma en el mismo orden que lo comprueban las reglas, para que cuadre al céntimo. */
-export function savePicks(tournamentId, user, playerIds, captainId, priceById) {
+export function savePicks(tournamentId, user, playerIds, captainId, priceById, chip = null) {
   return setDoc(doc(db, 'picks', picksId(tournamentId, user.uid)), {
     uid: user.uid,
     tournamentId,
     playerIds,
     captainId,
+    chip,
     cost: playerIds.reduce((sum, id) => sum + priceById[id], 0),
     displayName: user.displayName ?? 'Jugador',
     photoURL: user.photoURL ?? null,

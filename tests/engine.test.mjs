@@ -232,3 +232,30 @@ describe('sustituto automático', () => {
     assert.equal(entry.captainId, entry.substitutions[0].in)
   })
 })
+
+describe('comodines', () => {
+  test('triple capitán: x3, y solo una vez por temporada', async () => {
+    await clear()
+    const finalId = final.events[0].id
+    const liveId = live.events[0].id
+    // Semana 1 (Bank of Utah): Ana usa el triple capitán
+    await sync(db, { sources: sources(final), now: new Date('2026-09-30T00:00:00Z'), log: quiet })
+    const { team } = await makePicks(finalId, 'ana', 0)
+    await db.doc(`picks/${finalId}_ana`).update({ chip: 'triple' })
+    await sync(db, { sources: sources(final), now: new Date('2026-10-05T00:00:00Z'), log: quiet })
+    const week1 = (await db.doc(`entries/${finalId}_ana`).get()).data()
+    const players = Object.fromEntries((await db.collection(`tournaments/${finalId}/players`).get()).docs.map((d) => [d.id, d.data().points]))
+    const expected = team.reduce((s, id) => s + players[id] * (id === team[0] ? 3 : 1), 0)
+    assert.equal(week1.chip, 'triple')
+    assert.equal(week1.points, Math.round(expected * 10) / 10)
+
+    // Semana 2 (Baycurrent): lo vuelve a pedir y no vale
+    await sync(db, { sources: sources(live), now: new Date('2026-10-01T00:00:00Z'), log: quiet })
+    await makePicks(liveId, 'ana', 0)
+    await db.doc(`picks/${liveId}_ana`).update({ chip: 'triple' })
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:00:00Z'), log: quiet })
+    const week2 = (await db.doc(`entries/${liveId}_ana`).get()).data()
+    assert.equal(week2.chip, null)
+    assert.equal(week2.chipRejected, true)
+  })
+})

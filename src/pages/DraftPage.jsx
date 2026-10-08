@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
-import { getMyPicks, savePicks, subscribeEntry } from '../services/firestoreService'
-import { BUDGET, CAPTAIN_MULTIPLIER, POSITION_POINTS, RULES, TEAM_SIZE } from '../lib/scoring'
+import { getMyPicks, savePicks, subscribeEntry, subscribeMyEntries } from '../services/firestoreService'
+import { BUDGET, CAPTAIN_MULTIPLIER, CHIPS, POSITION_POINTS, RULES, TEAM_SIZE } from '../lib/scoring'
 import { clubColor } from '../lib/clubs'
 import { formatPrice } from '../utils/format'
 import Skeleton from '../components/ui/Skeleton'
@@ -53,6 +53,7 @@ function ScoringRules() {
         Tu <strong className="text-pine">capitán</strong> suma x{CAPTAIN_MULTIPLIER}. Los precios salen del ranking mundial (OWGR) y
         se fijan al publicarse los inscritos. Puedes cambiar el equipo cuantas veces quieras hasta la primera salida del torneo.
         Si un golfista tuyo se retira antes de jugar, entra solo el más caro que quepa en tu presupuesto (y hereda la capitanía).
+        Comodines, uno de cada por temporada: <strong className="text-pine">Triple capitán</strong> (x3) y <strong className="text-pine">Séptimo hombre</strong> (7 golfistas con los mismos 100M).
       </p>
     </details>
   )
@@ -73,6 +74,11 @@ export default function DraftPage() {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(null)
   const [entry, setEntry] = useState(null)
+  const [chip, setChip] = useState(null)
+  const [myEntries, setMyEntries] = useState([])
+  const teamSize = CHIPS[chip]?.size ?? TEAM_SIZE
+
+  useEffect(() => (user ? subscribeMyEntries(user.uid, setMyEntries, () => {}) : undefined), [user])
 
   useEffect(() => {
     if (!locked || !tournament?.id || !user) return
@@ -84,14 +90,16 @@ export default function DraftPage() {
     getMyPicks(tournament.id, user.uid)
       .then((picks) => {
         setSaved(picks)
-        if (picks) { setSelected(picks.playerIds); setCaptainId(picks.captainId) }
+        if (picks) { setSelected(picks.playerIds); setCaptainId(picks.captainId); setChip(picks.chip ?? null) }
       })
       .catch((err) => { console.error(err); setSaved(null) })
   }, [tournament?.id, user])
 
   const budgetUsed = selected.reduce((sum, id) => sum + (byId[id]?.price ?? 0), 0)
   const budgetLeft = BUDGET - budgetUsed
-  const dirty = !saved || saved.captainId !== captainId || saved.playerIds.join() !== selected.join()
+  const dirty = !saved || saved.captainId !== captainId || saved.playerIds.join() !== selected.join() || (saved.chip ?? null) !== chip
+  // Comodines ya gastados esta temporada en otros torneos
+  const usedChips = Object.fromEntries(myEntries.filter((e) => e.chip && e.tournamentId !== tournament?.id && e.season === tournament?.season).map((e) => [e.chip, e.tournamentName]))
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -123,7 +131,8 @@ export default function DraftPage() {
                 <span className="label">Equipos cerrados · ya cuentan los puntos</span>
                 <span className="text-xs text-muted">Coste {formatPrice(saved.cost)}</span>
               </div>
-              <TeamList playerIds={(entry ?? saved).playerIds} captainId={(entry ?? saved).captainId} substitutions={entry?.substitutions} playersById={byId} clubBg={club.bg} tournamentId={tournament.id} />
+              <TeamList playerIds={(entry ?? saved).playerIds} captainId={(entry ?? saved).captainId} substitutions={entry?.substitutions} chip={(entry ?? saved).chip} playersById={byId} clubBg={club.bg} tournamentId={tournament.id} />
+              {entry?.chipRejected && <p className="mt-2 text-xs text-over">Ese comodín ya lo habías gastado esta temporada, así que no se ha aplicado.</p>}
               <Link to="/league" className="btn-secondary my-3 w-full">Ver mis ligas</Link>
             </>
           ) : (
@@ -151,7 +160,7 @@ export default function DraftPage() {
       if (captainId === player.id) setCaptainId(null)
       return
     }
-    if (selected.length >= TEAM_SIZE || budgetLeft < player.price) return
+    if (selected.length >= teamSize || budgetLeft < player.price) return
     setSelected((prev) => [...prev, player.id])
     if (!captainId) setCaptainId(player.id)
   }
@@ -160,8 +169,8 @@ export default function DraftPage() {
     setSaving(true)
     setStatus(null)
     try {
-      await savePicks(tournament.id, user, selected, captainId, Object.fromEntries(selected.map((id) => [id, byId[id].price])))
-      setSaved({ playerIds: selected, captainId, cost: budgetUsed })
+      await savePicks(tournament.id, user, selected, captainId, Object.fromEntries(selected.map((id) => [id, byId[id].price])), chip)
+      setSaved({ playerIds: selected, captainId, cost: budgetUsed, chip })
       setStatus({ ok: true, text: '¡Equipo guardado! Puedes cambiarlo hasta la primera salida.' })
     } catch (err) {
       console.error(err)
@@ -170,8 +179,20 @@ export default function DraftPage() {
     setSaving(false)
   }
 
-  const ready = selected.length === TEAM_SIZE && captainId && budgetLeft >= 0
-  const missing = TEAM_SIZE - selected.length
+  const ready = selected.length === teamSize && captainId && budgetLeft >= 0
+  const missing = teamSize - selected.length
+
+  function toggleChip(id) {
+    setStatus(null)
+    const next = chip === id ? null : id
+    // Al quitar el séptimo hombre sobra el último fichaje
+    if (chip === 'seventh' && next !== 'seventh' && selected.length > TEAM_SIZE) {
+      const dropped = selected[selected.length - 1]
+      setSelected(selected.slice(0, TEAM_SIZE))
+      if (captainId === dropped) setCaptainId(selected[0])
+    }
+    setChip(next)
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 pt-4">
@@ -186,14 +207,14 @@ export default function DraftPage() {
               <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-mint uppercase">Presupuesto</p>
               <p className="score mt-1 text-[2.6rem]">{budgetUsed}M <span className="text-[1.4rem] text-white/55">/ {BUDGET}M</span></p>
             </div>
-            <p className="mb-1 text-sm text-white/80">{selected.length} de {TEAM_SIZE}</p>
+            <p className="mb-1 text-sm text-white/80">{selected.length} de {teamSize}</p>
           </div>
           <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-white/15">
             <div className={`h-full rounded-full transition-[width] duration-300 ${budgetLeft < 0 ? 'bg-over' : 'bg-mint'}`} style={{ width: `${Math.min((budgetUsed / BUDGET) * 100, 100)}%` }} />
           </div>
 
-          <ol className="relative mt-4 grid grid-cols-6 gap-2">
-            {Array.from({ length: TEAM_SIZE }, (_, i) => {
+          <ol className={`relative mt-4 grid gap-2 ${teamSize === 7 ? 'grid-cols-7' : 'grid-cols-6'}`}>
+            {Array.from({ length: teamSize }, (_, i) => {
               const p = byId[selected[i]]
               if (!p) return <li key={i} className="flex aspect-square items-center justify-center rounded-full border-2 border-dashed border-white/30 text-white/55"><Icon name="plus" className="size-4" /></li>
               const isCaptain = p.id === captainId
@@ -213,7 +234,27 @@ export default function DraftPage() {
               )
             })}
           </ol>
-          <p className="relative mt-3 text-xs text-white/70">Toca una cara para hacerla capitán (x{CAPTAIN_MULTIPLIER})</p>
+          <p className="relative mt-3 text-xs text-white/70">Toca una cara para hacerla capitán (x{CHIPS[chip]?.captainMultiplier ?? CAPTAIN_MULTIPLIER})</p>
+
+          {/* Comodines: uno de cada por temporada */}
+          <div className="relative mt-4 grid grid-cols-2 gap-2">
+            {Object.entries(CHIPS).map(([id, c]) => {
+              const usedIn = usedChips[id]
+              const active = chip === id
+              return (
+                <button
+                  key={id}
+                  onClick={() => toggleChip(id)}
+                  disabled={Boolean(usedIn)}
+                  aria-pressed={active}
+                  className={`rounded-2xl border px-3 py-2.5 text-left transition-all disabled:opacity-45 ${active ? 'border-mint bg-mint text-pine-dark' : 'border-white/20 bg-white/8 text-white hover:not-disabled:bg-white/12'}`}
+                >
+                  <span className="block font-display text-[1.1rem] leading-tight font-extrabold uppercase">{c.name}</span>
+                  <span className={`block text-[0.7rem] leading-snug ${active ? 'text-pine-dark/80' : 'text-white/70'}`}>{usedIn ? `Usado en ${usedIn}` : active ? 'Activado esta semana' : c.description}</span>
+                </button>
+              )
+            })}
+          </div>
 
           <button className="relative mt-4 flex h-14 w-full items-center justify-between rounded-full bg-white px-6 font-display text-[1.35rem] font-extrabold text-pine uppercase transition-transform active:scale-[0.98] disabled:opacity-60" disabled={!ready || !dirty || saving} onClick={handleSave}>
             {saving ? 'Guardando...' : !dirty ? 'Equipo guardado' : saved ? 'Guardar cambios' : 'Confirmar equipo'}
@@ -238,7 +279,7 @@ export default function DraftPage() {
           <ul className="card px-4">
             {visible.map((player) => {
               const isSelected = selected.includes(player.id)
-              const disabled = !isSelected && (selected.length >= TEAM_SIZE || budgetLeft < player.price)
+              const disabled = !isSelected && (selected.length >= teamSize || budgetLeft < player.price)
               return (
                 <li key={player.id} className={`row ${disabled ? 'opacity-45' : ''}`}>
                   <Link to={`/jugador/${tournament.id}/${player.id}`} className="flex min-w-0 flex-1 items-center gap-3" aria-label={`Ficha de ${player.name}`}>

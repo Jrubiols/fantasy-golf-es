@@ -5,6 +5,12 @@ export const TEAM_SIZE = 6
 export const BUDGET = 100
 export const CAPTAIN_MULTIPLIER = 1.5
 
+// Comodines: cada uno una vez por temporada
+export const CHIPS = {
+  triple: { name: 'Triple capitán', description: 'Tu capitán puntúa x3 en lugar de x1,5', captainMultiplier: 3, size: TEAM_SIZE },
+  seventh: { name: 'Séptimo hombre', description: 'Juegas con 7 golfistas, con los mismos 100M', captainMultiplier: CAPTAIN_MULTIPLIER, size: TEAM_SIZE + 1 },
+}
+
 export const HOLE_POINTS = { albatross: 8, eagles: 5, birdies: 3, pars: 1, bogeys: -1, doubles: -2 }
 export const CUT_POINTS = { made: 5, missed: -10 }
 
@@ -50,9 +56,10 @@ export function playerPoints(player, tournament) {
   return { total: holes + position + cut, holes, position, cut }
 }
 
-/** Puntos de un equipo: suma de sus jugadores, con el capitán multiplicado. */
-export function teamPoints(playerIds, captainId, pointsById) {
-  const total = playerIds.reduce((sum, id) => sum + (pointsById[id] ?? 0) * (id === captainId ? CAPTAIN_MULTIPLIER : 1), 0)
+/** Puntos de un equipo: suma de sus jugadores, con el capitán multiplicado (x3 con el triple capitán). */
+export function teamPoints(playerIds, captainId, pointsById, chip = null) {
+  const multiplier = CHIPS[chip]?.captainMultiplier ?? CAPTAIN_MULTIPLIER
+  const total = playerIds.reduce((sum, id) => sum + (pointsById[id] ?? 0) * (id === captainId ? multiplier : 1), 0)
   return Math.round(total * 10) / 10
 }
 

@@ -90,7 +90,7 @@ export default function LeaderboardPage() {
         <StandingsList
           rows={rows}
           currentUid={user?.uid}
-          renderDetail={view === 'tournament' ? (s) => <TeamList playerIds={s.playerIds} captainId={s.captainId} substitutions={s.substitutions} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} /> : undefined}
+          renderDetail={view === 'tournament' ? (s) => <TeamList playerIds={s.playerIds} captainId={s.captainId} substitutions={s.substitutions} chip={s.chip} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} /> : undefined}
           meta={view === 'season' ? (s) => `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : undefined}
         />
       )}

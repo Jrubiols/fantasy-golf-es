@@ -82,18 +82,24 @@ service cloud.firestore {
       function price(i) {
         return get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)/players/$(request.resource.data.playerIds[i])).data.price;
       }
+      // Comodines (uno de cada por temporada; el motor ignora el que ya se haya gastado):
+      // 'triple' = capitán x3, 'seventh' = séptimo jugador
       function validPicks() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['uid', 'tournamentId', 'playerIds', 'captainId', 'cost', 'displayName', 'photoURL', 'updatedAt'])
+        let chip = d.get('chip', null);
+        let size = chip == 'seventh' ? 7 : 6;
+        let cost6 = price(0) + price(1) + price(2) + price(3) + price(4) + price(5);
+        return d.keys().hasOnly(['uid', 'tournamentId', 'playerIds', 'captainId', 'cost', 'chip', 'displayName', 'photoURL', 'updatedAt'])
           && d.uid == request.auth.uid
           && id == d.tournamentId + '_' + d.uid
-          && d.playerIds is list && d.playerIds.size() == 6 && d.playerIds.toSet().size() == 6
+          && chip in [null, 'triple', 'seventh']
+          && d.playerIds is list && d.playerIds.size() == size && d.playerIds.toSet().size() == size
           && d.captainId in d.playerIds
           && isText(d.displayName, 1, 60)
           && isOptionalText(d.photoURL, 500)
           && d.updatedAt == request.time
           && request.time < tournament().firstTeeTime
-          && d.cost == price(0) + price(1) + price(2) + price(3) + price(4) + price(5)
+          && ((size == 6 && d.cost == cost6) || (size == 7 && d.cost == cost6 + price(6)))
           && d.cost <= 100;
       }
 

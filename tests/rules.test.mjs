@@ -120,6 +120,17 @@ describe('equipos', () => {
     const team = ['p1', 'p2', 'p3', 'p4', 'p5', 'nope']
     return assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { playerIds: team, cost: cost(TEAM) })))
   })
+  test('séptimo hombre: 7 jugadores solo con el comodín', async () => {
+    const seven = [...TEAM, 'p7']
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'tournaments', TID, 'players', 'p7'), { name: 'p7', price: 5 }))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { playerIds: seven, cost: cost(TEAM) + 5 })))
+    await assertSucceeds(setDoc(ref(as('ana'), 'ana'), picks('ana', { playerIds: seven, cost: cost(TEAM) + 5, chip: 'seventh' })))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { playerIds: seven, cost: cost(TEAM), chip: 'seventh' })))
+  })
+  test('comodines: solo los que existen', async () => {
+    await assertSucceeds(setDoc(ref(as('ana'), 'ana'), picks('ana', { chip: 'triple' })))
+    await assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { chip: 'cuadruple' })))
+  })
   test('el capitán tiene que estar en el equipo', () => assertFails(setDoc(ref(as('ana'), 'ana'), picks('ana', { captainId: 'p7' }))))
   test('no se guarda el equipo de otro', () => assertFails(setDoc(ref(as('ana'), 'bea'), picks('bea'))))
   test('sin campos extra', () => assertFails(setDoc(ref(as('ana'), 'ana'), { ...picks('ana'), points: 500 })))
