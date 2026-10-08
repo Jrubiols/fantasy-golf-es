@@ -9,6 +9,7 @@ import { formatDateRange } from '../utils/format'
 import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
+import LockerRoom from '../components/ui/LockerRoom'
 import { drawLeagueSummary, shareImage } from '../lib/shareImage'
 import { seasonDuels } from '../lib/duels'
 import Ordinal from '../components/ui/Ordinal'
@@ -383,6 +384,8 @@ function LeagueDetail({ leagueId }) {
       {view === 'tournament' && locked && tournament?.status !== 'scheduled' && (
         <WeekStats players={players} entries={(entries ?? []).filter((e) => memberIds.includes(e.uid))} tournamentId={tournament.id} scopeLabel="la liga" />
       )}
+
+      <LockerRoom leagueId={league.id} />
 
       <div className="mt-8 text-center">
         {isOwner

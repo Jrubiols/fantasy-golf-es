@@ -140,6 +140,20 @@ service cloud.firestore {
       );
 
       allow delete: if signedIn() && request.auth.uid == resource.data.ownerUid;
+
+      // Vestuario: mensajes de la liga, solo entre sus miembros
+      match /messages/{mid} {
+        function isMember() { return request.auth.uid in get(/databases/$(database)/documents/leagues/$(lid)).data.memberIds; }
+        allow read: if signedIn() && isMember();
+        allow create: if signedIn() && isMember()
+          && request.resource.data.keys().hasOnly(['uid', 'displayName', 'color', 'text', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && isText(request.resource.data.displayName, 1, 60)
+          && isOptionalText(request.resource.data.color, 20)
+          && isText(request.resource.data.text, 1, 280)
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      }
     }
 
     // Código de invitación → liga. Se puede consultar un código concreto, pero no listarlos.
