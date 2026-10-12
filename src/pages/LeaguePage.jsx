@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useCurrentTournament, useLocked, usePlayers } from '../hooks/useTournament'
-import { useEntries, useGroupStandings, useProfiles, useSeasonStandings, useWeeklyWinners } from '../hooks/useLeagueData'
+import { seasonFromFinals, useEntries, useGroupStandings, useLeagueMarket, useProfiles, useSeasonStandings, useWeeklyWinners } from '../hooks/useLeagueData'
 import { backfillInviteName, createLeague, deleteLeague, inviteLink, joinLeague, leaveLeague, renameLeague, subscribeLeague, subscribeMyLeagues } from '../services/firestoreService'
 import { clubColor } from '../lib/clubs'
-import { formatDateRange } from '../utils/format'
+import { formatCountdown, formatDateRange } from '../utils/format'
 import Avatar from '../components/ui/Avatar'
 import Points from '../components/ui/Points'
 import WeekStats from '../components/ui/WeekStats'
@@ -33,6 +33,7 @@ function JoinOrCreate({ uid, onDone }) {
   const [mode, setMode] = useState('join')
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [leagueMode, setLeagueMode] = useState('classic')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -42,7 +43,7 @@ function JoinOrCreate({ uid, onDone }) {
     if (mode === 'create' && name.trim().length < 3) { setError('El nombre necesita al menos 3 letras'); return }
     setLoading(true)
     try {
-      onDone(mode === 'join' ? await joinLeague(uid, code) : await createLeague(uid, name.trim()))
+      onDone(mode === 'join' ? await joinLeague(uid, code) : await createLeague(uid, name.trim(), leagueMode))
     } catch (err) {
       console.error(err)
       setError(err.message?.startsWith('No existe') || err.message?.startsWith('Ya estás') ? err.message : 'Algo ha fallado. Inténtalo de nuevo.')
@@ -64,6 +65,19 @@ function JoinOrCreate({ uid, onDone }) {
           <>
             <label htmlFor="league-name" className="label mb-2 block">Nombre de la liga</label>
             <input id="league-name" className="input-field mb-4 bg-bg" placeholder="Ej: Liga del Domingo" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+            <p className="label mb-2">Tipo de liga</p>
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              {[
+                { id: 'classic', title: 'Clásica', text: 'Cada uno hace su equipo; varios pueden tener al mismo golfista.' },
+                { id: 'market', title: 'Con mercado', text: 'Pujas a ciegas: cada golfista solo puede estar en un equipo.' },
+              ].map((m) => (
+                <button key={m.id} type="button" onClick={() => setLeagueMode(m.id)} aria-pressed={leagueMode === m.id}
+                  className={`rounded-2xl border-2 p-3 text-left transition-colors ${leagueMode === m.id ? 'border-pine bg-pine/5' : 'border-track'}`}>
+                  <span className="block font-display text-lg font-extrabold text-pine uppercase">{m.title}</span>
+                  <span className="block text-xs text-muted">{m.text}</span>
+                </button>
+              ))}
+            </div>
             <button type="submit" className="btn-primary w-full" disabled={loading}>{loading ? 'Creando...' : 'Crear liga'}</button>
           </>
         )}
@@ -225,6 +239,37 @@ function Winners({ weeks, profiles, currentUid }) {
 }
 
 
+// Liga con mercado: en qué fase está (pujas, mercado libre, en juego) y acceso al mercado
+function MarketCard({ league, tournament, team, locked }) {
+  const auctionAt = tournament.auctionAt?.toMillis?.() ?? 0
+  const resolved = league.market?.[tournament.id]?.resolved
+  const now = Date.now()
+  const phase = locked ? 'locked' : !resolved && now < auctionAt ? 'bids' : resolved ? 'free' : 'resolving'
+  const text = {
+    bids: `Pujas a ciegas abiertas · cierran en ${formatCountdown(auctionAt - now)}`,
+    resolving: 'Resolviendo la subasta: en unos minutos sabrás qué te has llevado',
+    free: 'Mercado libre: ficha a los golfistas sin dueño hasta la primera salida',
+    locked: 'Torneo en juego: tu equipo de la liga ya puntúa',
+  }[phase]
+  return (
+    <section className="relative mb-5 animate-fade-up overflow-hidden rounded-[1.6rem] bg-pine p-5 text-white">
+      <div className="halftone absolute inset-0" />
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-mint uppercase">Liga con mercado</p>
+          <p className="mt-1 text-sm text-white/85">{text}</p>
+          {team && <p className="mt-1 text-xs text-white/65">Tu equipo: {team.playerIds.length}/6 golfistas · {String(team.spent ?? 0).replace('.', ',')}M gastados</p>}
+        </div>
+        {phase !== 'resolving' && (
+          <Link to={`/league/${league.id}/mercado`} className="flex h-12 shrink-0 items-center gap-2 rounded-full bg-white px-5 font-display text-lg font-extrabold text-pine uppercase">
+            {phase === 'locked' ? 'Ver' : 'Mercado'} <Icon name="arrow" className="size-4" />
+          </Link>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function LeagueDetail({ leagueId }) {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -235,8 +280,14 @@ function LeagueDetail({ leagueId }) {
   const tournament = useCurrentTournament()
   const { locked } = useLocked(tournament)
   const { players, byId } = usePlayers(locked ? tournament?.id : null)
-  const entries = useEntries(tournament?.id)
-  const season = useSeasonStandings(tournament?.season)
+  const isMarket = league?.mode === 'market'
+  const market = useLeagueMarket(isMarket ? leagueId : null, tournament?.id, tournament?.season)
+  const globalEntries = useEntries(tournament?.id)
+  // En las ligas con mercado, la clasificación sale de sus equipos exclusivos
+  const entries = isMarket ? market.current : globalEntries
+  const globalSeason = useSeasonStandings(tournament?.season)
+  const marketSeason = useMemo(() => seasonFromFinals(market.finals), [market.finals])
+  const season = isMarket ? marketSeason : globalSeason
 
   useEffect(() => subscribeLeague(leagueId, setLeague, () => setLeague(null)), [leagueId])
 
@@ -259,7 +310,7 @@ function LeagueDetail({ leagueId }) {
     return [...byUid.values()]
   }, [season, entries])
 
-  const { weeks, finals } = useWeeklyWinners(tournament?.season, memberIds)
+  const { weeks, finals } = useWeeklyWinners(tournament?.season, memberIds, isMarket ? market.finals : undefined)
   const oadResults = useOadResults(tournament?.season)
   // Duelos: torneos terminados de la temporada más el que está en juego
   const duels = useMemo(() => {
@@ -350,10 +401,12 @@ function LeagueDetail({ leagueId }) {
         </button>
       </div>
 
+      {isMarket && tournament && <MarketCard league={league} tournament={tournament} team={entries?.find((e) => e.uid === user.uid)} locked={locked} />}
+
       <Tabs tabs={VIEWS} value={view} onChange={setView} className="mb-3" />
       <p className="mb-4 px-1 text-xs text-muted">
         {view === 'tournament'
-          ? !tournament ? '' : locked ? `${tournament.name} · pulsa en un participante para ver su equipo` : `${tournament.name} · los equipos se descubren cuando empieza el torneo`
+          ? !tournament ? '' : locked ? `${tournament.name} · pulsa en un participante para ver su equipo` : isMarket ? `${tournament.name} · equipos de la liga; puntúan desde la primera salida` : `${tournament.name} · los equipos se descubren cuando empieza el torneo`
           : view === 'season' ? `Temporada ${tournament?.season ?? ''} · suma de todos los torneos, incluido el que está en juego`
           : view === 'duels' ? 'Cada semana te toca un rival de la liga · victoria 3, empate 1'
           : `Temporada ${tournament?.season ?? ''} · el mejor de la liga en cada torneo`}
@@ -375,7 +428,9 @@ function LeagueDetail({ leagueId }) {
           renderDetail={view === 'tournament' && locked ? (s) => entryByUid[s.uid] && (
             <TeamList playerIds={entryByUid[s.uid].playerIds} captainId={entryByUid[s.uid].captainId} substitutions={entryByUid[s.uid].substitutions} chip={entryByUid[s.uid].chip} playersById={byId} clubBg={clubColor(s.color, s.uid).bg} tournamentId={tournament.id} />
           ) : undefined}
-          meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null) : undefined}
+          meta={view === 'season' ? (s) => (s.tournaments ? `${s.tournaments} ${s.tournaments === 1 ? 'torneo' : 'torneos'}${s.wins ? ` · ${s.wins} ${s.wins === 1 ? 'victoria' : 'victorias'}` : ''}` : s.live ? 'en juego' : null)
+            : isMarket && !locked ? (s) => { const t = entryByUid[s.uid]; return t ? `${t.playerIds.length}/6 golfistas · ${String(t.spent ?? 0).replace('.', ',')}M` : null } : undefined}
+          emptyLabel={isMarket && !locked ? '' : undefined}
         />
       )}
 

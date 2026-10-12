@@ -160,7 +160,8 @@ service cloud.firestore {
 
       // Al crear la liga se crea a la vez su código de invitación (ver leagueCodes)
       allow create: if signedIn()
-        && league().keys().hasOnly(['name', 'code', 'ownerUid', 'memberIds', 'createdAt'])
+        && league().keys().hasOnly(['name', 'code', 'ownerUid', 'memberIds', 'createdAt', 'mode'])
+        && league().get('mode', 'classic') in ['classic', 'market']
         && isText(league().name, 3, 40)
         && league().ownerUid == request.auth.uid
         && league().memberIds == [request.auth.uid]
@@ -182,7 +183,81 @@ service cloud.firestore {
         || (onlyChanges(['name'])
           && request.auth.uid == resource.data.ownerUid
           && isText(league().name, 3, 40))
+        // Cambiar entre liga clásica y con mercado: solo el creador
+        || (onlyChanges(['mode'])
+          && request.auth.uid == resource.data.ownerUid
+          && league().mode in ['classic', 'market'])
       );
+
+      // ---- Modo mercado: cada golfista solo puede estar en un equipo de la liga ----
+      function leagueData() { return get(/databases/$(database)/documents/leagues/$(lid)).data; }
+      function member() { return request.auth.uid in leagueData().memberIds; }
+      function isMarket() { return leagueData().get('mode', 'classic') == 'market'; }
+      function tour(tid) { return get(/databases/$(database)/documents/tournaments/$(tid)).data; }
+      function auctionResolved(tid) { return leagueData().get(['market', tid, 'resolved'], false) == true; }
+
+      // Pujas a ciegas: privadas y solo hasta el cierre de la subasta (las resuelve el motor)
+      match /bids/{id} {
+        allow get: if signedIn() && id.matches('.*_' + request.auth.uid);
+        allow create, update: if signedIn() && member() && isMarket()
+          && request.resource.data.keys().hasOnly(['uid', 'tournamentId', 'bids', 'updatedAt'])
+          && request.resource.data.uid == request.auth.uid
+          && id == request.resource.data.tournamentId + '_' + request.auth.uid
+          && request.resource.data.bids is map
+          && request.resource.data.bids.size() <= 20
+          && request.resource.data.updatedAt == request.time
+          && request.time < tour(request.resource.data.tournamentId).auctionAt;
+      }
+
+      // Equipos de la liga: el motor los crea al resolver la subasta; después hay mercado libre
+      match /teams/{id} {
+        function d() { return request.resource.data; }
+        function old() { return resource.data; }
+        function added() { return d().playerIds[old().playerIds.size()]; }
+        function ownerPath(tid, pid) { return /databases/$(database)/documents/leagues/$(lid)/owners/$(tid + '_' + pid); }
+
+        allow read: if signedIn() && member();
+        // Equipo vacío para quien no tiene (se unió tarde o no ganó ninguna puja)
+        allow create: if signedIn() && member() && isMarket()
+          && d().keys().hasOnly(['uid', 'tournamentId', 'playerIds', 'captainId', 'spent', 'displayName', 'updatedAt'])
+          && d().uid == request.auth.uid
+          && id == d().tournamentId + '_' + request.auth.uid
+          && d().playerIds == [] && d().spent == 0 && d().captainId == null
+          && isText(d().displayName, 1, 60)
+          && d().updatedAt == request.time
+          && auctionResolved(d().tournamentId)
+          && request.time < tour(d().tournamentId).firstTeeTime;
+        allow update: if signedIn() && old().uid == request.auth.uid
+          && d().updatedAt == request.time
+          && request.time < tour(old().tournamentId).firstTeeTime
+          && (
+            // Fichar en el mercado libre: un golfista sin dueño más, pagando su precio
+            (onlyChanges(['playerIds', 'spent', 'captainId', 'updatedAt'])
+              && auctionResolved(old().tournamentId)
+              && d().playerIds.size() == old().playerIds.size() + 1
+              && d().playerIds.size() <= 6
+              // Conserva a todos los que tenía y el nuevo va al final (si reordena, el «nuevo» sería uno con dueño)
+              && d().playerIds.hasAll(old().playerIds)
+              && !exists(ownerPath(old().tournamentId, added()))
+              && getAfter(ownerPath(old().tournamentId, added())).data.uid == request.auth.uid
+              && d().spent == old().spent + get(/databases/$(database)/documents/tournaments/$(old().tournamentId)/players/$(added())).data.price
+              && d().spent <= 100
+              && d().captainId in d().playerIds)
+            // Cambiar de capitán
+            || (onlyChanges(['captainId', 'updatedAt']) && d().captainId in old().playerIds)
+          );
+      }
+
+      // Dueño de cada golfista (un documento por golfista y torneo: si ya existe, nadie más puede ficharlo)
+      match /owners/{id} {
+        allow read: if signedIn() && member();
+        allow create: if signedIn() && member()
+          && request.resource.data.keys().hasOnly(['uid', 'tournamentId', 'playerId'])
+          && request.resource.data.uid == request.auth.uid
+          && id == request.resource.data.tournamentId + '_' + request.resource.data.playerId
+          && request.resource.data.playerId in getAfter(/databases/$(database)/documents/leagues/$(lid)/teams/$(request.resource.data.tournamentId + '_' + request.auth.uid)).data.playerIds
+          && request.time < tour(request.resource.data.tournamentId).firstTeeTime;
+      }
 
       allow delete: if signedIn() && request.auth.uid == resource.data.ownerUid;
 

@@ -10,7 +10,7 @@ import Points from './Points'
  * Cada fila: { uid, displayName, color, clubName, points, rank, photo? }.
  * Si se pasa renderDetail, al pulsar se despliega (por ejemplo, el equipo de ese jugador).
  */
-export default function StandingsList({ rows, currentUid, renderDetail, meta, cards = 3 }) {
+export default function StandingsList({ rows, currentUid, renderDetail, meta, cards = 3, emptyLabel = 'sin equipo' }) {
   const [open, setOpen] = useState(null)
   const toggle = (uid) => setOpen(open === uid ? null : uid)
 
@@ -32,7 +32,7 @@ export default function StandingsList({ rows, currentUid, renderDetail, meta, ca
               <span className="block truncate font-medium">{s.displayName}</span>
               {subtitle && <span className="block truncate text-xs text-muted">{subtitle}</span>}
             </span>
-            {s.points != null ? <Points value={s.points} className="text-[1.7rem]" /> : <span className="text-xs text-muted">sin equipo</span>}
+            {s.points != null ? <Points value={s.points} className="text-[1.7rem]" /> : <span className="text-xs text-muted">{emptyLabel}</span>}
           </div>
         )
 

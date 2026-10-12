@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { doc, getDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../services/firebase'
 import { subscribeEntries, subscribeFinalEntries, subscribeSeasonStandings } from '../services/firestoreService'
 
@@ -75,12 +75,14 @@ export function useGroupStandings(memberIds, source, profiles) {
  * Ganador de cada torneo terminado entre un grupo de usuarios (los de una liga), del más reciente al más antiguo.
  * Devuelve [{ tournamentId, tournamentName, startDate, winners: [entrada], count }].
  */
-export function useWeeklyWinners(season, memberIds) {
-  const [finals, setFinals] = useState(null)
+export function useWeeklyWinners(season, memberIds, finalsOverride) {
+  const [globalFinals, setFinals] = useState(null)
   useEffect(() => {
-    if (!season) return
+    if (!season || finalsOverride !== undefined) return
     return subscribeFinalEntries(season, setFinals, (err) => { console.error(err); setFinals([]) })
-  }, [season])
+  }, [season, finalsOverride])
+  // Las ligas con mercado pasan sus propios equipos terminados
+  const finals = finalsOverride !== undefined ? finalsOverride : globalFinals
 
   const weeks = useMemo(() => {
     if (!finals) return null
@@ -98,4 +100,38 @@ export function useWeeklyWinners(season, memberIds) {
       .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''))
   }, [finals, memberIds])
   return { weeks, finals }
+}
+
+/**
+ * Equipos de una liga con mercado: los del torneo actual y los ya terminados de la temporada.
+ * Tienen la misma forma que los equipos generales (uid, playerIds, captainId, points, rank, final…).
+ */
+export function useLeagueMarket(leagueId, tournamentId, season) {
+  const [current, setCurrent] = useState(null)
+  const [finals, setFinals] = useState(null)
+  useEffect(() => {
+    if (!leagueId || !tournamentId) return
+    const q = query(collection(db, 'leagues', leagueId, 'teams'), where('tournamentId', '==', tournamentId))
+    return onSnapshot(q, (snap) => setCurrent(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), () => setCurrent([]))
+  }, [leagueId, tournamentId])
+  useEffect(() => {
+    if (!leagueId || !season) return
+    const q = query(collection(db, 'leagues', leagueId, 'teams'), where('season', '==', season), where('final', '==', true))
+    return onSnapshot(q, (snap) => setFinals(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), () => setFinals([]))
+  }, [leagueId, season])
+  return { current, finals }
+}
+
+/** Clasificación de temporada a partir de equipos terminados (para ligas con mercado). */
+export function seasonFromFinals(finals) {
+  if (!finals) return null
+  const byUid = new Map()
+  for (const e of finals) {
+    const row = byUid.get(e.uid) ?? { uid: e.uid, displayName: e.displayName, points: 0, tournaments: 0, wins: 0 }
+    row.points = Math.round((row.points + (e.points ?? 0)) * 10) / 10
+    row.tournaments++
+    if (e.rank === 1) row.wins++
+    byUid.set(e.uid, row)
+  }
+  return [...byUid.values()]
 }

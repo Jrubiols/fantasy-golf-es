@@ -186,6 +186,55 @@ describe('más o menos', () => {
   })
 })
 
+describe('modo mercado', () => {
+  const L = 'M1'
+  async function setup({ auctionInMinutes = 60, resolved = false } = {}) {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await updateDoc(doc(db, 'tournaments', TID), { auctionAt: Timestamp.fromMillis(Date.now() + auctionInMinutes * 60_000) })
+      await setDoc(doc(db, 'leagues', L), { name: 'Mercado', code: 'MKT123', ownerUid: 'ana', memberIds: ['ana', 'bea'], mode: 'market', ...(resolved && { market: { [TID]: { resolved: true } } }) })
+      if (resolved) {
+        await setDoc(doc(db, 'leagues', L, 'teams', `${TID}_ana`), { uid: 'ana', tournamentId: TID, playerIds: ['p1'], captainId: 'p1', spent: 25, displayName: 'Ana' })
+        await setDoc(doc(db, 'leagues', L, 'owners', `${TID}_p1`), { uid: 'ana', tournamentId: TID, playerId: 'p1' })
+      }
+    })
+  }
+  const bids = (uid, b = { p1: 26 }) => ({ uid, tournamentId: TID, bids: b, updatedAt: serverTimestamp() })
+  function sign(uid, pid, spent) {
+    const db = as(uid)
+    const batch = writeBatch(db)
+    batch.update(doc(db, 'leagues', L, 'teams', `${TID}_${uid}`), { playerIds: arrayUnion(pid), spent, captainId: pid, updatedAt: serverTimestamp() })
+    batch.set(doc(db, 'leagues', L, 'owners', `${TID}_${pid}`), { uid, tournamentId: TID, playerId: pid })
+    return batch.commit()
+  }
+
+  test('pujas a ciegas: solo miembros y antes del cierre', async () => {
+    await setup()
+    await assertSucceeds(setDoc(doc(as('bea'), 'leagues', L, 'bids', `${TID}_bea`), bids('bea')))
+    await assertFails(getDoc(doc(as('ana'), 'leagues', L, 'bids', `${TID}_bea`)))
+    await assertFails(setDoc(doc(as('carla'), 'leagues', L, 'bids', `${TID}_carla`), bids('carla')))
+    await setup({ auctionInMinutes: -1 })
+    await assertFails(setDoc(doc(as('bea'), 'leagues', L, 'bids', `${TID}_bea`), bids('bea')))
+  })
+  test('mercado libre: solo tras la subasta, sin repetir golfista y sin pasarse', async () => {
+    await setup({ auctionInMinutes: -1 })
+    await assertFails(setDoc(doc(as('bea'), 'leagues', L, 'teams', `${TID}_bea`), { uid: 'bea', tournamentId: TID, playerIds: [], captainId: null, spent: 0, displayName: 'Bea', updatedAt: serverTimestamp() }))
+    await setup({ auctionInMinutes: -1, resolved: true })
+    await assertSucceeds(setDoc(doc(as('bea'), 'leagues', L, 'teams', `${TID}_bea`), { uid: 'bea', tournamentId: TID, playerIds: [], captainId: null, spent: 0, displayName: 'Bea', updatedAt: serverTimestamp() }))
+    await assertFails(sign('bea', 'p1', 25)) // p1 ya es de Ana
+    await assertFails(sign('bea', 'p2', 5)) // no paga su precio (20)
+    await assertSucceeds(sign('bea', 'p2', 20))
+    await assertFails(sign('ana', 'p2', 45)) // ya es de Bea
+    await assertSucceeds(updateDoc(doc(as('ana'), 'leagues', L, 'teams', `${TID}_ana`), { captainId: 'p1', updatedAt: serverTimestamp() }))
+    await assertFails(updateDoc(doc(as('ana'), 'leagues', L, 'teams', `${TID}_ana`), { captainId: 'p2', updatedAt: serverTimestamp() }))
+  })
+  test('solo el creador cambia el modo de la liga', async () => {
+    await setup()
+    await assertFails(updateDoc(doc(as('bea'), 'leagues', L), { mode: 'classic' }))
+    await assertSucceeds(updateDoc(doc(as('ana'), 'leagues', L), { mode: 'classic' }))
+  })
+})
+
 describe('ligas', () => {
   async function createLeague(uid, lid = 'L1', code = 'ABC123') {
     const db = as(uid)

@@ -388,3 +388,38 @@ describe('más o menos', () => {
     assert.deepEqual(r2.items.slice(0, 2).map((it) => [it.stat, it.line]), [['birdies', 3.5], ['strokes', 69.5]])
   })
 })
+
+describe('modo mercado', () => {
+  const id = live.events[0].id
+  test('resuelve la subasta al cierre, crea equipos exclusivos y los puntúa', async () => {
+    await clear()
+    await db.recursiveDelete(db.collection('users'))
+    for (const [uid, name] of [['ana', 'Ana García'], ['bea', 'Bea López']]) await db.doc(`users/${uid}`).set({ displayName: name })
+    await db.doc('leagues/LM').set({ name: 'Mercado', code: 'MKT123', ownerUid: 'ana', memberIds: ['ana', 'bea'], mode: 'market' })
+
+    // Antes del cierre de pujas: nada
+    await sync(db, { sources: sources(live), now: new Date('2026-10-06T00:00:00Z'), log: quiet })
+    const t = (await db.doc(`tournaments/${id}`).get()).data()
+    assert.equal(t.auctionAt.toDate().toISOString(), '2026-10-07T05:45:00.000Z')
+    await db.doc(`leagues/LM/bids/${id}_ana`).set({ uid: 'ana', tournamentId: id, bids: { '5054388': 30, '4837368': 20 }, updatedAt: new Date('2026-10-06T10:00:00Z') })
+    await db.doc(`leagues/LM/bids/${id}_bea`).set({ uid: 'bea', tournamentId: id, bids: { '5054388': 35 }, updatedAt: new Date('2026-10-06T11:00:00Z') })
+
+    // Tras el cierre: subasta resuelta, Bridgeman para Bea (35 > 30) y Coody para Ana
+    await sync(db, { sources: sources(live), now: new Date('2026-10-07T06:00:00Z'), log: quiet })
+    const ana = (await db.doc(`leagues/LM/teams/${id}_ana`).get()).data()
+    const bea = (await db.doc(`leagues/LM/teams/${id}_bea`).get()).data()
+    assert.deepEqual(ana.playerIds, ['4837368'])
+    assert.deepEqual(bea.playerIds, ['5054388'])
+    assert.equal(bea.spent, 35)
+    assert.equal((await db.doc(`leagues/LM/owners/${id}_5054388`).get()).data().uid, 'bea')
+    assert.equal((await db.doc('leagues/LM').get()).data().market[id].resolved, true)
+    const msgs = (await db.collection('leagues/LM/messages').get()).docs.map((d) => d.data().text)
+    assert.ok(msgs.some((m) => /Subasta resuelta: 2 fichajes.*Bea se lleva a J\. Bridgeman por 35M/.test(m)))
+
+    // Con el torneo en juego, puntúan
+    await sync(db, { sources: sources(live), now: new Date('2026-10-08T12:00:00Z'), log: quiet })
+    const scored = (await db.doc(`leagues/LM/teams/${id}_bea`).get()).data()
+    assert.equal(scored.rank, 1)
+    assert.equal(scored.points, 70 * 1.5)
+  })
+})

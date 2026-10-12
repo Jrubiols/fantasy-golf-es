@@ -8,6 +8,7 @@ import { formAdjustment, OWGR_URL, parseOwgr, priceField, withForm } from '../sr
 import { applySubstitutions, CHIPS, playerPoints, teamPoints, withdrewBeforeStart } from '../src/lib/scoring.js'
 import { DEADLINE_WARNING_MS, formatMadrid, notify } from './notify.mjs'
 import { detectMoments, isBigMoment, leaders, momentsMessage, momentText } from './moments.mjs'
+import { AUCTION_LEAD_MS, syncMarkets } from './market.mjs'
 
 export const defaultSources = {
   leaderboard: (eventId) => fetchLeaderboard(eventId),
@@ -136,7 +137,16 @@ export async function sync(db, { sources = defaultSources, now = new Date(), log
 
   // 4. Datos del torneo y torneo actual
   const { holePars, ...tournamentData } = tournament
-  await tournamentRef.set({ ...tournamentData, holePars, firstTeeTime: Timestamp.fromDate(firstTeeTime), updatedAt: Timestamp.fromDate(now) }, { merge: true })
+  await tournamentRef.set({
+    ...tournamentData, holePars, firstTeeTime: Timestamp.fromDate(firstTeeTime),
+    // Cierre de las pujas de las ligas con mercado
+    auctionAt: Timestamp.fromMillis(firstTeeTime.getTime() - AUCTION_LEAD_MS),
+    updatedAt: Timestamp.fromDate(now),
+  }, { merge: true })
+
+  // Ligas con mercado: subasta a ciegas, mercado libre y puntos de sus equipos exclusivos
+  const marketLines = await syncMarkets(db, { tournament, fieldById: new Map(fieldPlayers.map((p) => [p.id, p])), pointsById, locked, now })
+  for (const [lid, lines] of marketLines) await postMessages(db.collection('leagues').doc(lid), lines, now)
   await db.doc('config/current').set({ tournamentId: tournament.id, updatedAt: Timestamp.fromDate(now) }, { merge: true })
 
   // Avisos antes del cierre: al publicarse los precios y 3 horas antes (solo a quien no tiene equipo).
@@ -418,20 +428,24 @@ async function liveEvents(db, { tournament, teams, fieldPlayers, storedPlayers, 
     const announceWinner = tournament.status === 'final' && !live?.finalPosted
     if (announceWinner) lines.push(`🏆 ${joinNames(lead.map(name))} ${lead.length > 1 ? 'ganan' : 'gana'} el ${tournament.name} en la liga con ${leadPoints} puntos`)
 
-    if (lines.length) {
-      const batch = db.batch()
-      lines.forEach((text, i) => {
-        batch.set(leagueDoc.ref.collection('messages').doc(), {
-          uid: 'system', displayName: 'Fantasy Golf ES', color: null, text, kind: 'system',
-          // Un milisegundo de diferencia para que salgan en orden
-          createdAt: Timestamp.fromMillis(now.getTime() + i),
-        })
-      })
-      await batch.commit()
-    }
+    await postMessages(leagueDoc.ref, lines, now)
     await leagueDoc.ref.set({ live: { tournamentId: tournament.id, leaders: lead, finalPosted: Boolean(announceWinner || live?.finalPosted) } }, { merge: true })
   }
   return delivered
+}
+
+/** Mensajes del motor en el Vestuario de una liga, en orden. */
+async function postMessages(leagueRef, lines, now) {
+  if (!lines.length) return
+  const batch = leagueRef.firestore.batch()
+  lines.forEach((text, i) => {
+    batch.set(leagueRef.collection('messages').doc(), {
+      uid: 'system', displayName: 'Fantasy Golf ES', color: null, text, kind: 'system',
+      // Un milisegundo de diferencia para que salgan en orden
+      createdAt: Timestamp.fromMillis(now.getTime() + i),
+    })
+  })
+  await batch.commit()
 }
 
 /** Estadísticas del equipo en el torneo, para los logros: birdies, eagles, corte y acierto del capitán. */

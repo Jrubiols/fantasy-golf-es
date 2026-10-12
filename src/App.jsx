@@ -15,6 +15,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const JoinPage = lazy(() => import('./pages/JoinPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
 const PlayerPage = lazy(() => import('./pages/PlayerPage'))
+const MarketPage = lazy(() => import('./pages/MarketPage'))
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
                 <Route path="/draft" element={<DraftPage />} />
                 <Route path="/league" element={<LeaguePage />} />
                 <Route path="/league/:leagueId" element={<LeaguePage />} />
+                <Route path="/league/:leagueId/mercado" element={<MarketPage />} />
                 <Route path="/leaderboard" element={<LeaderboardPage />} />
                 <Route path="/perfil" element={<ProfilePage />} />
                 <Route path="/unirse/:code" element={<JoinPage />} />

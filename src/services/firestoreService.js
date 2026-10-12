@@ -86,12 +86,12 @@ export function subscribeLeague(leagueId, callback, onError) {
 }
 
 /** Crea la liga y su código a la vez. Si el código ya existe (muy raro), prueba con otro. */
-export async function createLeague(uid, name) {
+export async function createLeague(uid, name, mode = 'classic') {
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = newCode()
     const leagueRef = doc(collection(db, 'leagues'))
     const batch = writeBatch(db)
-    batch.set(leagueRef, { name, code, ownerUid: uid, memberIds: [uid], createdAt: serverTimestamp() })
+    batch.set(leagueRef, { name, code, ownerUid: uid, memberIds: [uid], mode, createdAt: serverTimestamp() })
     batch.set(doc(db, 'leagueCodes', code), { leagueId: leagueRef.id, name })
     try {
       await batch.commit()
